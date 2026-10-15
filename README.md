@@ -104,8 +104,14 @@ RELAY=ws://localhost:8080/websocket/g/local/nng4 node tests/proof-state.mjs Addi
 cd tests/e2e && npm install && BASE=http://localhost:8000/ node clicks.mjs
 ```
 
-## Licenses
+## License
 
-NNG4, Verso and Mathlib are licensed under Apache 2.0, lean4game under GPL 3.0. The texts and
-levels shown on the site are taken from NNG4 (by Kevin Buzzard, Jon Eugster and contributors) and
-modified for this prototype.
+Copyright 2026 Peter Pfaffelhuber. Licensed under the Apache License, Version 2.0 (see `LICENSE`).
+
+Exceptions and third-party material:
+
+* `deploy/lean4game-relay.patch` modifies lean4game and is licensed under GPL 3.0, like lean4game.
+* The texts and levels shown on the site are taken from NNG4 (by Kevin Buzzard, Jon Eugster and
+  contributors, Apache 2.0) and modified for this prototype.
+* The submodules keep their own licenses: NNG4 (Apache 2.0) and lean4game (GPL 3.0). Verso and
+  Mathlib, used as dependencies, are licensed under Apache 2.0.
