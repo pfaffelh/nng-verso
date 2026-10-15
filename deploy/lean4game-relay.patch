@@ -1,0 +1,28 @@
+diff --git a/relay/scripts/bubblewrap.sh b/relay/scripts/bubblewrap.sh
+index 50cd60f..02f1cc2 100755
+--- a/relay/scripts/bubblewrap.sh
++++ b/relay/scripts/bubblewrap.sh
+@@ -33,7 +33,7 @@ exec bwrap\
+   --symlink usr/bin /bin\
+   --symlink usr/sbin /sbin\
+   --clearenv \
+-  --setenv PATH "/bin:/usr/bin:/lean/bin" \
++  --setenv PATH "/lean/bin:/bin:/usr/bin" \
+   --setenv LEAN_SRC_PATH "$LEAN_SRC_PATH" \
+   --unshare-user \
+   --unshare-pid  \
+diff --git a/relay/src/index.ts b/relay/src/index.ts
+index 903b5a4..e94f832 100644
+--- a/relay/src/index.ts
++++ b/relay/src/index.ts
+@@ -46,8 +46,8 @@ registerInstalledGames()
+   .catch(error => console.error("Failed to initialize game activity: " + error))
+ 
+ let router = express.Router();
+-router.get('/import/status/:owner/:repo', importStatus)
+-router.get('/import/trigger/:owner/:repo', importTrigger)
++// disabled for the public demo: router.get("/import/status/:owner/:repo", importStatus)
++// disabled for the public demo: router.get("/import/trigger/:owner/:repo", importTrigger)
+ 
+ const server = app
+   .use(express.static(clientDistPath)) // TODO: add a dist folder from inside the game

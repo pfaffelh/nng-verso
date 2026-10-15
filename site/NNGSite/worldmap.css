@@ -1,0 +1,35 @@
+.nng-map { margin: 1em 0 2em; text-align: center; }
+.nng-map svg { width: 100%; height: auto; }
+.nng-map a { cursor: pointer; }
+.nng-map-edge { stroke: #999; stroke-width: 10; }
+.nng-map-edge.done { stroke: green; }
+
+.nng-map-world-circle { fill: #999; }
+.nng-map-world.unlocked .nng-map-world-circle { fill: #1976d2; }
+.nng-map-world.done .nng-map-world-circle { fill: green; }
+.nng-map-world a:hover .nng-map-world-circle { filter: brightness(1.15); }
+
+.nng-map-label {
+  font-family: var(--verso-structure-font-family, sans-serif);
+  font-size: 14px;
+  color: white;
+  background: #868686;
+  border-radius: 1em;
+  padding: 0.2em 0.6em;
+  display: inline-block;
+}
+.nng-map foreignObject { overflow: visible; text-align: center; }
+.nng-map-world.unlocked .nng-map-label { background: #1667b8; }
+.nng-map-world.done .nng-map-label { background: #0e770e; }
+
+.nng-map-level circle { fill: #bbb; }
+.nng-map-level.unlocked circle { fill: #1976d2; }
+.nng-map-level.done circle { fill: #139e13; }
+.nng-map-level:hover circle { filter: brightness(1.15); }
+.nng-map-level text {
+  fill: white;
+  font-family: var(--verso-structure-font-family, sans-serif);
+  font-size: 15px;
+  font-weight: bold;
+  pointer-events: none;
+}

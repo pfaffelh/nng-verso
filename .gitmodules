@@ -1,0 +1,6 @@
+[submodule "nng4"]
+	path = nng4
+	url = https://github.com/leanprover-community/nng4
+[submodule "lean4game"]
+	path = lean4game
+	url = https://github.com/leanprover-community/lean4game
