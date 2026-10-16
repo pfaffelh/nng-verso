@@ -21,7 +21,8 @@ bottom. A proof is a set of lines that lead from the assumptions to the goals.
 * A *blue dot* is something you have. Tap it: you get a list of where it can be used.
 * Tap an entry of the list, and the line is drawn. You are done when no red circle is left.
 
-Two rules help on the way:
+Two rules help on the way. They are in the list below the picture; `?1` and `?2` stand for any
+statements:
 
 * *∧-introduction* (∧I) makes `A ∧ B` from `A` and `B`,
 * *∧-elimination* (∧E) takes `A ∧ B` apart into `A` and `B`.
@@ -51,8 +52,8 @@ example (A B : Prop) (a : A) (b : B) : B ∧ A := ⟨b, a⟩
 ::::
 
 ::::task (assumptions := "A, B") (conclusions := "A ∧ B")
-Your first rule. Tap the red circle of the goal and choose *∧I*: a new block appears that needs
-`A` and `B`. Then fill its two red circles.
+Your first rule. Tap the red circle of the goal, unfold the list of rules below the picture and
+add *∧I*. A new block appears: connect its output to the goal, then fill its two red circles.
 
 ```lean -show
 example (A B : Prop) (a : A) (b : B) : A ∧ B := ⟨a, b⟩
@@ -68,8 +69,8 @@ example (A : Prop) (a : A) : A ∧ A := ⟨a, a⟩
 ::::
 
 ::::task (assumptions := "A ∧ B") (conclusions := "A")
-Now take a conjunction apart. Tap the blue dot below `A ∧ B` and choose *∧E*. Then use its output
-`A` for the goal.
+Now take a conjunction apart. Add an *∧E* block from the list of rules, feed `A ∧ B` into it and
+connect the right one of its outputs to the goal.
 
 ```lean -show
 example (A B : Prop) (h : A ∧ B) : A := h.1

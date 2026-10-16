@@ -45,13 +45,16 @@
     switch (f.t) {
       case 'atom': return f.n
       case 'bot': return '⊥'
-      case 'meta': return '?' + f.id.split('.').pop()
+      case 'meta': return '?' + metaNumber(f.id.split('.').pop())
       case 'not': return wrap(4, '¬' + show(f.a, s, 4))
       case 'and': return wrap(3, `${show(f.a, s, 4)} ∧ ${show(f.b, s, 3)}`)
       case 'or': return wrap(2, `${show(f.a, s, 3)} ∨ ${show(f.b, s, 2)}`)
       case 'imp': return wrap(1, `${show(f.a, s, 2)} → ${show(f.b, s, 1)}`)
     }
   }
+
+  // Rule variables A, B, C, … are shown as ?1, ?2, ?3, … while undetermined.
+  const metaNumber = v => (/^[A-Z]$/.test(v) ? v.charCodeAt(0) - 64 : v)
 
   function resolve(f, s) {
     while (f.t === 'meta' && s[f.id]) f = s[f.id]
@@ -430,7 +433,7 @@
     // The sheet shows one line (title, number of new blocks) and folds out on tap. It starts
     // unfolded only when `unfold` is set, i.e. when nothing in the picture fits.
     openSheet(title, options, hint, unfold = true) {
-      const n = options.filter(o => !o.section && /new /.test(o.detail ?? '')).length
+      const n = options.filter(o => /block$/.test(o.detail ?? '')).length
       const head = el('div', 'ipm-sheet-head')
       const toggle = el('span', 'ipm-sheet-toggle')
       head.append(el('div', 'ipm-sheet-title', title), toggle)
@@ -451,7 +454,7 @@
       body.append(close)
       const setFolded = folded => {
         this.sheet.classList.toggle('ipm-folded', folded)
-        toggle.textContent = folded ? `${n ? `${n} new block${n === 1 ? '' : 's'} ` : 'more '}▸` : 'less ▾'
+        toggle.textContent = folded ? `${n ? `${n} rule${n === 1 ? '' : 's'} ` : 'more '}▸` : 'less ▾'
       }
       head.addEventListener('click', () => setFolded(!this.sheet.classList.contains('ipm-folded')))
       this.sheet.replaceChildren(head, body)
@@ -460,53 +463,38 @@
       this.sheet.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
 
-    // A selected input: existing outputs are tapped in the picture; the sheet offers new blocks.
-    inputMenu(b, i) {
-      const p = this.proof, s = this.analysis.s, want = b.inputs[i]
-      const rules = []
-      for (const name of this.rules) {
+    // The rules, shown generically (`∧I  ?1, ?2 ⟹ ?1 ∧ ?2`) so that they do not give anything away.
+    // Choosing one only adds the block; the player then connects it, and the current selection stays.
+    ruleOptions() {
+      return this.rules.map(name => {
         const r = RULES[name]
-        r.outputs.forEach((_, j) => {
-          const probe = instantiate(parse(r.outputs[j]), r.vars, 'probe')
-          const s1 = unify(probe, want, s)
-          if (!s1) return
-          const ins = r.inputs.map(x => show(instantiate(parse(x), r.vars, 'probe'), s1)).join(', ')
-          rules.push({ label: `${r.label} ${ins} ⟹ ${show(want, s)}`, detail: `new ${r.name} block`,
-            act: () => { this.selected = null; this.change(() => {
-              const nb = p.addRule(name)
-              p.connect({ block: nb.id, port: j }, { block: b.id, port: i })
-            }) } })
-        })
-      }
-      const connected = p.connections.find(c => c.to.block === b.id && c.to.port === i)
-      const options = [...rules]
-      if (connected) options.push({ label: 'Disconnect', act: () => { this.selected = null; this.change(() => { p.connections = p.connections.filter(c => c !== connected) }) } })
-      const anyFit = p.blocks.some(o => o.outputs.some((_, j) => this.fits({ block: o.id, port: j }, { block: b.id, port: i })))
-      this.openSheet(`Prove ${show(want, s)}`, options,
-        anyFit ? 'Tap a glowing green dot in the picture, or add a new block:' : 'Nothing in the picture fits yet. Add a new block:', !anyFit)
+        const generic = x => show(instantiate(parse(x), r.vars, 'rule'))
+        return {
+          label: `${r.label}  ${r.inputs.map(generic).join(', ')} ⟹ ${r.outputs.map(generic).join(', ')}`,
+          detail: `add a ${r.name} block`,
+          act: () => {
+            this.undoStack.push(this.proof.snapshot())
+            this.proof.addRule(name)
+            this.sheet.hidden = true
+            this.render()
+          },
+        }
+      })
     }
 
-    // A selected output: open inputs are tapped in the picture; the sheet offers new blocks.
+    inputMenu(b, i) {
+      const p = this.proof, s = this.analysis.s
+      const options = this.ruleOptions()
+      const connected = p.connections.find(c => c.to.block === b.id && c.to.port === i)
+      if (connected) options.push({ label: 'Disconnect', act: () => { this.selected = null; this.change(() => { p.connections = p.connections.filter(c => c !== connected) }) } })
+      this.openSheet(`Prove ${show(b.inputs[i], s)}`, options,
+        'Tap a blue dot in the picture, or add a block and connect it:', false)
+    }
+
     outputMenu(b, j) {
-      const p = this.proof, s = this.analysis.s, have = b.outputs[j]
-      const rules = []
-      for (const name of this.rules) {
-        const r = RULES[name]
-        r.inputs.forEach((_, i) => {
-          const probe = instantiate(parse(r.inputs[i]), r.vars, 'probe')
-          const s1 = unify(probe, have, s)
-          if (!s1) return
-          const outs = r.outputs.map(x => show(instantiate(parse(x), r.vars, 'probe'), s1)).join(', ')
-          rules.push({ label: `${r.label} ${show(have, s)} ⟹ ${outs}`, detail: `new ${r.name} block`,
-            act: () => { this.selected = null; this.change(() => {
-              const nb = p.addRule(name)
-              p.connect({ block: b.id, port: j }, { block: nb.id, port: i })
-            }) } })
-        })
-      }
-      const anyFit = this.analysis.openInputs.some(o => this.fits({ block: b.id, port: j }, o))
-      this.openSheet(`Use ${show(have, s)}`, rules,
-        anyFit ? 'Tap a glowing green circle in the picture, or add a new block:' : 'No red circle fits. Add a new block:', !anyFit)
+      const s = this.analysis.s
+      this.openSheet(`Use ${show(b.outputs[j], s)}`, this.ruleOptions(),
+        'Tap a red circle in the picture, or add a block and connect it:', false)
     }
 
     blockMenu(b) {

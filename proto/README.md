@@ -70,9 +70,10 @@ apply: `∧` groups to the right, so the Proof Machine's `A∧B∧C` is written 
   newest connection (☠, tap it for an explanation). Any correct graph is accepted.
 * It is operated by tapping, for phones: tap a red circle (something to prove), and the outputs
   that fit glow green; tap one of them or its box to draw the line. It works the other way round,
-  too (blue dot first). New rule blocks are offered in a sheet that folds to one line, so the
-  picture stays visible; it unfolds by itself when nothing in the picture fits. The layout is
-  automatic. Tasks are revealed one at a time.
+  too (blue dot first). The rules are listed generically (`∧I  ?1, ?2 ⟹ ?1 ∧ ?2`), always all of
+  them, in a sheet that folds to one line; choosing one only adds the block, which the player then
+  connects. Undetermined parts are shown as `?1`, `?2` until unification fills them in. The layout
+  is automatic. Tasks are revealed one at a time.
 
 ## Measuring blind clicking
 
