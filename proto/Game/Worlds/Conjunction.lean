@@ -14,15 +14,20 @@ Each task carries a Lean proof, checked when the site is built.
 #doc (Manual) "Logic: Conjunction" =>
 
 Proofs as pictures, after the [Incredible Proof Machine](https://incredible.pm) by Joachim
-Breitner. The assumptions are at the top, the goals at the bottom. Connect them with two rules:
+Breitner. What you know (the assumptions) is at the top, what you want to show (the goals) at the
+bottom. A proof is a set of lines that lead from the assumptions to the goals.
+
+* A *red circle* is something still to be proved. Tap it: you get a list of what can prove it.
+* A *blue dot* is something you have. Tap it: you get a list of where it can be used.
+* Tap an entry of the list, and the line is drawn. You are done when no red circle is left.
+
+Two rules help on the way:
 
 * *∧-introduction* (∧I) makes `A ∧ B` from `A` and `B`,
 * *∧-elimination* (∧E) takes `A ∧ B` apart into `A` and `B`.
 
-Tap a red dot (an open input) or a blue dot (an output) to see what can be connected there.
-
 ::::task (assumptions := "A") (conclusions := "A")
-Connect the assumption to the goal.
+Tap the red circle on top of the goal `A`, then choose *Use A* (the assumption).
 
 ```lean -show
 example (A : Prop) (a : A) : A := a
@@ -46,7 +51,8 @@ example (A B : Prop) (a : A) (b : B) : B ∧ A := ⟨b, a⟩
 ::::
 
 ::::task (assumptions := "A, B") (conclusions := "A ∧ B")
-Your first rule: ∧-introduction.
+Your first rule. Tap the red circle of the goal and choose *∧I*: a new block appears that needs
+`A` and `B`. Then fill its two red circles.
 
 ```lean -show
 example (A B : Prop) (a : A) (b : B) : A ∧ B := ⟨a, b⟩
@@ -62,7 +68,8 @@ example (A : Prop) (a : A) : A ∧ A := ⟨a, a⟩
 ::::
 
 ::::task (assumptions := "A ∧ B") (conclusions := "A")
-Now take a conjunction apart: ∧-elimination.
+Now take a conjunction apart. Tap the blue dot below `A ∧ B` and choose *∧E*. Then use its output
+`A` for the goal.
 
 ```lean -show
 example (A B : Prop) (h : A ∧ B) : A := h.1

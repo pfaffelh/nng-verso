@@ -71,3 +71,7 @@
 .ipm-option.ipm-bad { opacity: 0.7; }
 .ipm-option.ipm-bad .ipm-option-main::after { content: "  ☠"; color: #c0392b; }
 .ipm-option.ipm-close { align-items: center; background: white; }
+/* Open inputs pulse gently, so that it is clear where to tap. */
+@keyframes ipm-pulse { 0%, 100% { stroke-width: 3; } 50% { stroke-width: 6; } }
+.ipm-port.ipm-in.ipm-open circle:not(.ipm-hit) { animation: ipm-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ipm-port.ipm-in.ipm-open circle:not(.ipm-hit) { animation: none; } }
