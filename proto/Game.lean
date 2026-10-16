@@ -2,6 +2,7 @@ import Game.MyNat
 import Game.Authoring
 import Game.Worlds.Tutorial
 import Game.Worlds.Addition
+import Game.Worlds.RwLesson
 
 /-!
 The game: its levels are defined in the Verso documents `Game.Worlds.*`, which run the game

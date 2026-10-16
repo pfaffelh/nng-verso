@@ -10,7 +10,7 @@ msgstr "Project-Id-Version: VersoGame v4.31.0\n"
 "X-Poedit-Basepath: ../..\n"
 "X-Poedit-SearchPath-0: ."
 
-#: Game.lean:12
+#: Game.lean:13
 msgid "A small game whose levels are written in Verso documents."
 msgstr ""
 
@@ -21,6 +21,35 @@ msgstr ""
 #. §0: `rfl`
 #: Game/Worlds/Tutorial.lean:25
 msgid "Both sides are identical. Click on §0."
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:51
+msgid "Choose the place"
+msgstr ""
+
+#. §0: `b + 0`
+#. §1: `+`
+#. §2: `b`
+#. §3: `0`
+#: Game/Worlds/RwLesson.lean:57
+msgid "Click on §0 in the goal on the right (on the §1 between §2 and §3)."
+msgstr ""
+
+#. §0: `a + 0`
+#. §1: `h`
+#: Game/Worlds/RwLesson.lean:88
+msgid "Click on §0 in the hypothesis §1."
+msgstr ""
+
+#. §0: `rw`
+#. §1: `h`
+#: Game/Worlds/RwLesson.lean:27
+msgid "Click on §0, then on §1."
+msgstr ""
+
+#. §0: `add_zero`
+#: Game/Worlds/RwLesson.lean:42
+msgid "Click on §0."
 msgstr ""
 
 #. §0: $x$
@@ -43,11 +72,42 @@ msgstr ""
 msgid "If §0, then §1."
 msgstr ""
 
+#: Game/Worlds/RwLesson.lean:17
+msgid "Lesson: rw"
+msgstr ""
+
+#. §0: `x`
+#. §1: `z`
+#: Game/Worlds/RwLesson.lean:74
+msgid "Now replace §0 by §1."
+msgstr ""
+
+#. §0: `h`
+#: Game/Worlds/RwLesson.lean:90
+msgid "Now §0 says exactly what you need."
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:22
+msgid "Replace"
+msgstr ""
+
 #. §0: `y`
 #. §1: `x`
 #. §2: `rw [h]`
 #: Game/Worlds/Tutorial.lean:43
 msgid "Replace §0 by §1 with §2."
+msgstr ""
+
+#. §0: `y`
+#. §1: `x`
+#. §2: `rw [← h₁]`
+#. §3: `y`
+#: Game/Worlds/RwLesson.lean:72
+msgid "Replace §0 by §1 with §2: click on §3."
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:83
+msgid "Rewrite a hypothesis"
 msgstr ""
 
 #. §0: `add_zero`
@@ -61,12 +121,20 @@ msgstr ""
 msgid "Start with §0: click on §1."
 msgstr ""
 
+#: Game/Worlds/RwLesson.lean:66
+msgid "The other direction"
+msgstr ""
+
 #: Game/Worlds/Tutorial.lean:18
 msgid "The rfl tactic"
 msgstr ""
 
 #: Game/Worlds/Tutorial.lean:36
 msgid "The rw tactic"
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:37
+msgid "Theorems are equations"
 msgstr ""
 
 #. §0: `0`
@@ -86,7 +154,7 @@ msgstr ""
 msgid "Use §0 to move §1 to the outside, then the hypothesis §2."
 msgstr ""
 
-#: Game.lean:11
+#: Game.lean:12
 msgid "Verso Game Prototype"
 msgstr ""
 

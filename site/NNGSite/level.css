@@ -135,3 +135,21 @@
 }
 .nng-level .nng-suggestion:hover { background: #e8f0fb; border-color: #3b6db3; }
 .nng-level .nng-suggest-result { color: #555; font-family: var(--verso-code-font-family, monospace); }
+
+/* Steps of a lesson: compact, revealed one at a time */
+.nng-level.nng-step { margin: 1em 0; padding: 0.5em 0.9em; }
+.nng-level.nng-step .nng-editor { min-height: 5em; }
+.nng-level .nng-step-label { font-size: 0.8em; color: #3b6db3; font-weight: bold; margin-bottom: 0.3em; }
+.nng-level.nng-step.nng-completed .nng-step-label::after { content: " ✓"; color: #2e7d4f; }
+.nng-level.nng-locked { background: #f3f4f6; border-style: dashed; }
+.nng-level.nng-locked > :not(.nng-step-label) { display: none; }
+.nng-level.nng-locked .nng-step-label { color: #999; margin: 0; }
+.nng-level.nng-locked .nng-step-label::after { content: " 🔒"; }
+/* A solved step shrinks to text, statement, proof and conclusion; clicking the proof reopens it. */
+.nng-level.nng-step.nng-completed:not(:focus-within) .nng-palette,
+.nng-level.nng-step.nng-completed:not(:focus-within) .nng-feedback-col,
+.nng-level.nng-step.nng-completed:not(:focus-within) .nng-status { display: none; }
+.nng-level.nng-step.nng-completed:not(:focus-within) .nng-play { grid-template-columns: minmax(0, 1fr); }
+.nng-level.nng-step.nng-completed:not(:focus-within) .nng-editor {
+  min-height: 0; height: auto; field-sizing: content; border-color: #cfe3d6; background: #f6fbf8;
+}

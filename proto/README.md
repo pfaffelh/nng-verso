@@ -37,6 +37,16 @@ Shown after the level is solved.
 * `Game.lean` imports the worlds and runs `MakeGame`, which writes `.lake/gamedata`. The site reads
   the available tactics and theorems of each level from there when it is rendered.
 
+## Lesson format
+
+`Game/Worlds/RwLesson.lean` presents the `rw` material as a lesson in small steps on one page, for
+comparison with the game format (one level per page in `Tutorial.lean` and `Addition.lean`). A level
+with `+step` is shown compactly; the steps of a page are revealed one at a time, each once the
+previous one is solved, and solved steps shrink to text, proof and conclusion.
+
+Theorem buttons show the theorem's statement (`a + 0 = a`) instead of its name (`add_zero`); the
+name is the tooltip and is what gets inserted.
+
 ## Clicking subterms
 
 Goals are shown as nested subterms. Clicking one asks the game server (`Game/Rewrite.lean`, RPC

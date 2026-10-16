@@ -71,17 +71,20 @@ def readLevelData (world : String) (level : Nat) : IO Json := do
     throw <| IO.userError s!"{path} not found: build the game (`lake build Game`) before rendering"
   IO.ofExcept <| Json.parse (← IO.FS.readFile path)
 
--- Wrapper of a level, carrying world and level number for `level.js`.
-block_extension Block.level (world : String) (level : Nat) where
-  data := Json.mkObj [("world", world), ("level", level)]
+-- Wrapper of a level, carrying world and level number for `level.js`. A `step` is a small level
+-- inside a lesson: shown compactly, and revealed once the previous step is solved.
+block_extension Block.level (world : String) (level : Nat) (step : Bool) where
+  data := Json.mkObj [("world", world), ("level", level), ("step", step)]
   traverse _ _ _ := pure none
   extraJs := {JS.mk levelJs}
   extraCss := {CSS.mk levelCss}
   toHtml := some fun _ goB _ data content => do
     let world := (data.getObjValAs? String "world").toOption.getD ""
     let level := (data.getObjValAs? Nat "level").toOption.getD 0
+    let step := (data.getObjValAs? Bool "step").toOption.getD false
     let relay := (← IO.getEnv "NNG_RELAY_URL").map (fun url => #[("data-relay", url)]) |>.getD #[]
-    pure <| .tag "div" (#[("class", "nng-level"), ("data-world", world), ("data-level", toString level),
+    let cls := if step then "nng-level nng-step" else "nng-level"
+    pure <| .tag "div" (#[("class", cls), ("data-world", world), ("data-level", toString level),
         ("data-lang", "en")] ++ relay) (← content.mapM goB)
   toTeX := none
 
@@ -166,10 +169,13 @@ structure LevelConfig where
   title : String
   newTactics : String
   newTheorems : String
+  /-- A small step of a lesson (see `Block.level`). -/
+  step : Bool
 
 instance : FromArgs LevelConfig DocElabM where
   fromArgs := LevelConfig.mk <$> .positional `world .string <*> .positional `level .nat <*>
-    .named `title .string false <*> .namedD `newTactics .string "" <*> .namedD `newTheorems .string ""
+    .named `title .string false <*> .namedD `newTactics .string "" <*> .namedD `newTheorems .string "" <*>
+    .flag `step false
 
 /-- A level; see the module documentation. -/
 @[directive]
@@ -187,7 +193,7 @@ def level : DirectiveExpanderOf LevelConfig
     unless tactics.isEmpty do inventory := inventory.push (← `(command| NewTactic $tactics*))
     unless theorems.isEmpty do inventory := inventory.push (← `(command| NewTheorem $theorems*))
     runCommands inventory
-    ``(Verso.Doc.Block.other (Block.level $(quote cfg.world) $(quote cfg.level)) #[$blocks,*])
+    ``(Verso.Doc.Block.other (Block.level $(quote cfg.world) $(quote cfg.level) $(quote cfg.step)) #[$blocks,*])
 
 /-- The statement of the current level with hints and solution, in the game server's syntax. It is
 elaborated but not shown; the editor appears in its place. -/

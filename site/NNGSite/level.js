@@ -264,6 +264,19 @@
     N: 'ℕ', and: '∧', or: '∨', not: '¬', '.': '·', forall: '∀', exists: '∃', iff: '↔',
   }
 
+  // The statement of a theorem from its signature, e.g. `a + 0 = a` from ` (a : ℕ) : a + 0 = a`:
+  // the part after the last ` : ` outside brackets.
+  function conclusionOf(type) {
+    let depth = 0, cut = 0
+    for (let i = 0; i < type.length; i++) {
+      if ('([{'.includes(type[i])) depth++
+      else if (')]}'.includes(type[i])) depth--
+      else if (depth === 0 && type.startsWith(' : ', i)) cut = i + 3
+    }
+    // Drop namespaces such as `MyNat.` in `MyNat.succ b`, as the goals show them.
+    return type.slice(cut).trim().replace(/\b[A-Z][\w']*\.(?=[a-z_])/g, '')
+  }
+
   // What the palette inserts for a tactic; `|` marks the position of the cursor afterwards.
   const tacticTemplates = {
     rw: 'rw [|]', nth_rewrite: 'nth_rewrite 1 [|]', repeat: 'repeat rw [|]',
@@ -296,6 +309,13 @@
       this.lemmaTypes = new Map([...root.querySelectorAll('.nng-lemma')]
         .map(b => [b.dataset.insert, b.dataset.type ?? '']))
       this.lemmas = new Set(this.lemmaTypes.keys())
+      // Theorem buttons show what the theorem says; the name, which is inserted, is the tooltip.
+      for (const b of root.querySelectorAll('.nng-lemma[data-type]')) {
+        const statement = conclusionOf(b.dataset.type)
+        if (!statement) continue
+        b.title = `${b.dataset.insert} :${b.dataset.type.slice(b.dataset.type.lastIndexOf(' : ') + 2)}`
+        b.replaceChildren(el('span', 'nng-lemma-statement', statement))
+      }
       this.undoStack = []
       this.lastTyped = 0
       this.lastEditWasDelete = false
@@ -451,14 +471,7 @@
       const expectsName = inBrackets ||
         /(^|\s)(exact|apply|intro|use|cases|induction|at|have|contrapose!?)\s+$/.test(lineBefore)
       if (!expectsName) {
-        // The statement after the last top-level ` : ` (theorems carry their parameters).
-        let depth = 0, cut = 0
-        for (let i = 0; i < type.length; i++) {
-          if ('([{'.includes(type[i])) depth++
-          else if (')]}'.includes(type[i])) depth--
-          else if (depth === 0 && type.startsWith(' : ', i)) cut = i + 3
-        }
-        const statement = type.slice(cut)
+        const statement = conclusionOf(type)
         // A natural number: start an induction on it, if that is available.
         if (statement.trim() === 'ℕ') {
           if (this.root.querySelector('.nng-tactic[data-insert="induction"]'))
@@ -590,7 +603,8 @@
         if (previous && previous.opened) {
           conn.notify('textDocument/didClose', { textDocument: { uri: previous.uri } })
           previous.opened = false
-          previous.setStatus('Paused – click into the editor to continue.')
+          if (!previous.root.classList.contains('nng-completed'))
+            previous.setStatus('Paused – click into the editor to continue.')
         }
         this.version = 1
         this.sentText = this.editor.value
@@ -737,8 +751,10 @@
     }
 
     markCompleted() {
+      const isNew = !this.root.classList.contains('nng-completed')
       this.root.classList.add('nng-completed')
       if (this.conclusion) this.conclusion.hidden = false
+      if (isNew) this.onCompleted?.()
     }
 
     // ------------------------------------------------------------ rendering
@@ -1004,8 +1020,25 @@
     }
   }
 
+  // The steps of a lesson (`.nng-step`) are revealed one at a time: a step is shown once all steps
+  // before it are solved.
+  function initSteps(levels) {
+    const steps = levels.filter(l => l.root.classList.contains('nng-step'))
+    if (!steps.length) return
+    steps.forEach((l, i) => l.root.prepend(el('div', 'nng-step-label', `Step ${i + 1} of ${steps.length}`)))
+    const update = scroll => {
+      const open = steps.findIndex(l => !l.root.classList.contains('nng-completed'))
+      steps.forEach((l, i) => l.root.classList.toggle('nng-locked', open >= 0 && i > open))
+      if (scroll && open >= 0) steps[open].root.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    update(false)
+    // Give the player a moment to read the conclusion before moving on.
+    steps.forEach(l => { l.onCompleted = () => setTimeout(() => update(true), 1500) })
+  }
+
   function init() {
-    document.querySelectorAll('.nng-level').forEach(root => new Level(root))
+    const levels = [...document.querySelectorAll('.nng-level')].map(root => new Level(root))
+    initSteps(levels)
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init)
