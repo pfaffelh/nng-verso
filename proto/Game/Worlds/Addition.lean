@@ -51,3 +51,21 @@ This was your first proof by induction. You have now proved `zero_add`, a theore
 of the defining rules of addition.
 :::
 ::::
+
+# Level 3: An exercise
+
+::::level "Addition" 3 (title := "Exercise: four rewrites")
+An exercise rather than a lesson: you know everything you need, but not every rewrite helps. Plan
+first, then click.
+
+```statement
+/-- If $a = b$, then $0 + a + succ 0 = succ b$. -/
+Statement (a b : ℕ) (h : a = b) : 0 + a + succ 0 = succ b := by
+  Hint (hidden := true) "Get rid of `0 +` first."
+  rw [zero_add, add_succ, add_zero, h]
+```
+
+:::conclusion
+Four rewrites, and several of the offered ones lead nowhere.
+:::
+::::

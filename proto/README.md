@@ -56,6 +56,20 @@ subterm. If plain `rw [rule]` would rewrite a different occurrence first, the ru
 arguments. Inside an unfinished `·` block the page fetches the goals with
 `Game.getInteractiveGoals`, so they can be clicked there too.
 
+## Measuring blind clicking
+
+`MeasureBlindClicking` in `Game.lean` (after `MakeGame`, see `Game/Blind.lean`) simulates a player
+who clicks at random among the moves the page offers: every rewrite with an unlocked theorem or an
+equation hypothesis at every matching subterm, forwards and backwards, in the goal and in
+hypotheses, and `rfl`. For each level it reports how often 200 random runs of at most 10 clicks
+solve the level, and the average number of possible clicks per state. A high rate is fine for a
+lesson step and too narrow for an exercise. Only `rw` and `rfl` are simulated, so levels needing
+`induction` show 0 %.
+
+Current results: all lesson steps and tutorial levels 95–100 %; the exercise (Addition 3) 54 %,
+since its rules only simplify, so almost any order works. Rules that can go round in circles or
+are useful in both directions (commutativity, associativity) are what makes blind clicking fail.
+
 ## Building and playing
 
 ```bash

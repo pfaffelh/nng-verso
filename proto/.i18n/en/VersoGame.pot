@@ -10,7 +10,7 @@ msgstr "Project-Id-Version: VersoGame v4.31.0\n"
 "X-Poedit-Basepath: ../..\n"
 "X-Poedit-SearchPath-0: ."
 
-#: Game.lean:13
+#: Game.lean:14
 msgid "A small game whose levels are written in Verso documents."
 msgstr ""
 
@@ -52,6 +52,10 @@ msgstr ""
 msgid "Click on §0."
 msgstr ""
 
+#: Game/Worlds/Addition.lean:57
+msgid "Exercise: four rewrites"
+msgstr ""
+
 #. §0: $x$
 #. §1: $y$
 #. §2: $x + y = x + y$
@@ -66,9 +70,15 @@ msgstr ""
 msgid "For every natural number §0, we have §1."
 msgstr ""
 
+#. §0: `0 +`
+#: Game/Worlds/Addition.lean:64
+msgid "Get rid of §0 first."
+msgstr ""
+
 #. §0: $y = x$
 #. §1: $y + y = x + x$
 #: Game/Worlds/Tutorial.lean:41
+#: Game/Worlds/Addition.lean:62
 msgid "If §0, then §1."
 msgstr ""
 
@@ -154,7 +164,7 @@ msgstr ""
 msgid "Use §0 to move §1 to the outside, then the hypothesis §2."
 msgstr ""
 
-#: Game.lean:12
+#: Game.lean:13
 msgid "Verso Game Prototype"
 msgstr ""
 
