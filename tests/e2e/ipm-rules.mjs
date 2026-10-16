@@ -15,14 +15,14 @@ const t = page.locator('.ipm-task').nth(8)
 await tap(t.locator('.ipm-conclusion .ipm-port.ipm-in'))
 console.log('sheet folded:', (await t.locator('.ipm-sheet').innerText()).replace(/\n/g, ' | '))
 await tap(t.locator('.ipm-sheet-head'))
-console.log('rules:', await t.locator('.ipm-sheet .ipm-option-main').allInnerTexts())
-await tap(t.locator('.ipm-sheet .ipm-option').filter({ hasText: '∧I' }))
+console.log('rules:', await t.locator('.ipm-sheet .ipm-option-picture').evaluateAll(bs => bs.map(b => b.title)))
+await tap(t.locator('.ipm-sheet .ipm-option-picture').nth(0))
 console.log('after adding ∧I:', await state(t))
 await tap(t.locator('.ipm-rule .ipm-port.ipm-out').first())          // connect ∧I to the goal
 console.log('after connecting ∧I:', await state(t))
 await tap(t.locator('.ipm-assumption .ipm-port.ipm-out'))           // A ∧ B selected
 await tap(t.locator('.ipm-sheet-head'))
-await tap(t.locator('.ipm-sheet .ipm-option').filter({ hasText: '∧E' }))
+await t.locator('.ipm-sheet').screenshot({ path: 'ipm-sheet.png' }); await tap(t.locator('.ipm-sheet .ipm-option-picture').nth(1))
 await tap(t.locator('.ipm-rule').nth(1).locator('.ipm-port.ipm-in'))  // into ∧E
 console.log('after feeding ∧E:', await state(t))
 await t.screenshot({ path: 'ipm3-mid.png' })

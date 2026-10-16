@@ -89,3 +89,12 @@
 .ipm-sheet-toggle { font-size: 0.85em; color: #3b6db3; white-space: nowrap; }
 .ipm-sheet-hint { font-size: 0.85em; color: #555; margin: 0.3em 0; }
 .ipm-sheet.ipm-folded .ipm-sheet-body { display: none; }
+
+/* The list of rules shows each rule as the block it adds. */
+.ipm-option.ipm-option-picture { align-items: center; padding: 0.2em 0.4em; }
+.ipm-rule-picture { display: block; max-width: 100%; height: auto; }
+.ipm-rule-picture text { font-family: var(--verso-code-font-family, monospace); font-size: 14px; pointer-events: none; }
+.ipm-rule-picture .ipm-block rect { fill: white; stroke: #8a9bb3; stroke-width: 1.5; }
+.ipm-rule-picture .ipm-port circle:not(.ipm-hit) { fill: #3b6db3; stroke: white; stroke-width: 2; }
+.ipm-rule-picture .ipm-port.ipm-in circle:not(.ipm-hit) { fill: white; stroke: #c0392b; stroke-width: 3; animation: none; }
+.ipm-rule-picture .ipm-port .ipm-hit { fill: transparent; }

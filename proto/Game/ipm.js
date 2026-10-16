@@ -194,6 +194,59 @@
   }
   const charW = 8.4, layerH = 104, portGap = 18
 
+  // Size of a block, from its labels.
+  function blockSize(b, s) {
+    const texts = [...b.inputs, ...b.outputs].map(f => show(f, s))
+    const label = b.kind === 'rule' ? RULES[b.rule].label : ''
+    const inW = b.inputs.reduce((w, f) => w + show(f, s).length * charW + portGap, 0)
+    const outW = b.outputs.reduce((w, f) => w + show(f, s).length * charW + portGap, 0)
+    return { w: Math.max(56, inW, outW, label.length * 12 + 24, ...texts.map(t => t.length * charW + 20)),
+             h: b.kind === 'rule' ? 62 : 34 }
+  }
+
+  // Where port `i` (kind 'in' or 'out') of block `b` at position `q` sits.
+  function portAt(q, b, kind, i) {
+    const n = kind === 'in' ? b.inputs.length : b.outputs.length
+    return { x: q.x + q.w * (i + 1) / (n + 1), y: kind === 'in' ? q.y : q.y + q.h }
+  }
+
+  // Draws block `b` at `q` = {x, y, w, h}. The same drawing is used on the board and in the list of
+  // rules. `portClass(kind, i)` adds classes to the ports; ports carry `data-kind` and `data-i`.
+  function drawBlock(b, q, s, extraClass = '', portClass = () => '') {
+    const g = svg('g', { class: `ipm-block ipm-${b.kind} ${extraClass}` })
+    g.append(svg('rect', { x: q.x, y: q.y, width: q.w, height: q.h, rx: 8 }))
+    if (b.kind === 'rule') {
+      g.append(svg('text', { x: q.x + q.w / 2, y: q.y + q.h / 2 + 6, class: 'ipm-rule-label', 'text-anchor': 'middle' }, RULES[b.rule].label))
+      b.inputs.forEach((f, i) => g.append(svg('text', { x: portAt(q, b, 'in', i).x, y: q.y + 17, 'text-anchor': 'middle', class: 'ipm-port-label' }, show(f, s))))
+      b.outputs.forEach((f, i) => g.append(svg('text', { x: portAt(q, b, 'out', i).x, y: q.y + q.h - 8, 'text-anchor': 'middle', class: 'ipm-port-label' }, show(f, s))))
+    } else {
+      const f = b.kind === 'assumption' ? b.outputs[0] : b.inputs[0]
+      g.append(svg('text', { x: q.x + q.w / 2, y: q.y + q.h / 2 + 5, 'text-anchor': 'middle', class: 'ipm-prop' }, show(f, s)))
+    }
+    for (const kind of ['in', 'out'])
+      (kind === 'in' ? b.inputs : b.outputs).forEach((_, i) => {
+        const xy = portAt(q, b, kind, i)
+        const port = svg('g', { class: `ipm-port ipm-${kind} ${portClass(kind, i)}`, 'data-kind': kind, 'data-i': i })
+        port.append(svg('circle', { cx: xy.x, cy: xy.y, r: 16, class: 'ipm-hit' }), svg('circle', { cx: xy.x, cy: xy.y, r: 6 }))
+        g.append(port)
+      })
+    return g
+  }
+
+  // A rule as a small picture: exactly the block that gets added to the board.
+  function rulePicture(name) {
+    const r = RULES[name]
+    const b = { kind: 'rule', rule: name,
+      inputs: r.inputs.map(x => instantiate(parse(x), r.vars, 'rule')),
+      outputs: r.outputs.map(x => instantiate(parse(x), r.vars, 'rule')) }
+    const size = blockSize(b, {})
+    const q = { x: 18, y: 18, ...size }
+    const pic = svg('svg', { viewBox: `0 0 ${size.w + 36} ${size.h + 36}`, class: 'ipm-rule-picture',
+      width: size.w + 36, height: size.h + 36 })
+    pic.append(drawBlock(b, q, {}, '', kind => (kind === 'in' ? 'ipm-open' : '')))
+    return pic
+  }
+
   class Task {
     constructor(root, index) {
       this.root = root
@@ -263,13 +316,7 @@
       for (const b of p.blocks) (rows[layer[b.id]] ??= []).push(b)
       let width = 320
       const sizes = {}
-      for (const b of p.blocks) {
-        const texts = [...b.inputs, ...b.outputs].map(f => show(f, s))
-        const label = b.kind === 'rule' ? RULES[b.rule].label : ''
-        const inW = b.inputs.reduce((w, f) => w + show(f, s).length * charW + portGap, 0)
-        const outW = b.outputs.reduce((w, f) => w + show(f, s).length * charW + portGap, 0)
-        sizes[b.id] = { w: Math.max(56, inW, outW, label.length * 12 + 24, ...texts.map(t => t.length * charW + 20)), h: b.kind === 'rule' ? 62 : 34 }
-      }
+      for (const b of p.blocks) sizes[b.id] = blockSize(b, s)
       for (const row of Object.values(rows)) width = Math.max(width, row.reduce((w, b) => w + sizes[b.id].w + 24, 24))
       for (const [l, row] of Object.entries(rows)) {
         const total = row.reduce((w, b) => w + sizes[b.id].w, 0) + 24 * (row.length - 1)
@@ -283,10 +330,7 @@
       return { pos, width, height }
     }
 
-    portXY(pos, b, kind, i) {
-      const p = pos[b.id], n = kind === 'in' ? b.inputs.length : b.outputs.length
-      return { x: p.x + p.w * (i + 1) / (n + 1), y: kind === 'in' ? p.y : p.y + p.h }
-    }
+    portXY(pos, b, kind, i) { return portAt(pos[b.id], b, kind, i) }
 
     render() {
       const p = this.proof
@@ -311,47 +355,31 @@
         root.append(g)
       }
       // blocks
+      const sel = this.selected
       for (const b of p.blocks) {
-        const q = pos[b.id]
-        const g = svg('g', { class: `ipm-block ipm-${b.kind}` + (b.kind === 'conclusion' && !this.analysis.openInputs.some(o => o.block === b.id) ? ' ipm-proved' : '') })
-        g.append(svg('rect', { x: q.x, y: q.y, width: q.w, height: q.h, rx: 8 }))
-        if (b.kind === 'rule') {
-          const t = svg('text', { x: q.x + q.w / 2, y: q.y + q.h / 2 + 6, class: 'ipm-rule-label', 'text-anchor': 'middle' }, RULES[b.rule].label)
-          g.append(t)
-          g.addEventListener('click', ev => { if (!ev.target.closest('.ipm-port')) this.tapBlock(b) })
-          b.inputs.forEach((f, i) => g.append(svg('text', { x: this.portXY(pos, b, 'in', i).x, y: q.y + 17, 'text-anchor': 'middle', class: 'ipm-port-label' }, show(f, s))))
-          b.outputs.forEach((f, i) => g.append(svg('text', { x: this.portXY(pos, b, 'out', i).x, y: q.y + q.h - 8, 'text-anchor': 'middle', class: 'ipm-port-label' }, show(f, s))))
-        } else {
-          const f = b.kind === 'assumption' ? b.outputs[0] : b.inputs[0]
-          g.append(svg('text', { x: q.x + q.w / 2, y: q.y + q.h / 2 + 5, 'text-anchor': 'middle', class: 'ipm-prop' }, show(f, s)))
-          // Tapping an assumption or a goal is tapping its only port.
-          g.addEventListener('click', ev => {
-            if (ev.target.closest('.ipm-port')) return
-            if (b.kind === 'assumption') this.tapOutput(b, 0); else this.tapInput(b, 0)
-          })
+        const proved = b.kind === 'conclusion' && !this.analysis.openInputs.some(o => o.block === b.id)
+        const portClass = (kind, i) => {
+          const at = { block: b.id, port: i }
+          if (kind === 'in') {
+            const open = this.analysis.openInputs.some(o => o.block === b.id && o.port === i)
+            return (open ? 'ipm-open ' : '') +
+              (sel?.kind === 'in' && sel.block === b.id && sel.port === i ? 'ipm-selected ' : '') +
+              (sel?.kind === 'out' && open && this.fits(sel, at) ? 'ipm-candidate' : '')
+          }
+          return (sel?.kind === 'out' && sel.block === b.id && sel.port === i ? 'ipm-selected ' : '') +
+            (sel?.kind === 'in' && this.fits(at, sel) ? 'ipm-candidate' : '')
         }
-        const sel = this.selected
-        // ports
-        b.inputs.forEach((_, i) => {
-          const xy = this.portXY(pos, b, 'in', i)
-          const open = this.analysis.openInputs.some(o => o.block === b.id && o.port === i)
-          const selected = sel?.kind === 'in' && sel.block === b.id && sel.port === i
-          const candidate = sel?.kind === 'out' && open && this.fits(sel, { block: b.id, port: i })
-          const port = svg('g', { class: 'ipm-port ipm-in' + (open ? ' ipm-open' : '') +
-            (selected ? ' ipm-selected' : '') + (candidate ? ' ipm-candidate' : '') })
-          port.append(svg('circle', { cx: xy.x, cy: xy.y, r: 16, class: 'ipm-hit' }), svg('circle', { cx: xy.x, cy: xy.y, r: 6 }))
-          port.addEventListener('click', () => this.tapInput(b, i))
-          g.append(port)
-        })
-        b.outputs.forEach((_, i) => {
-          const xy = this.portXY(pos, b, 'out', i)
-          const selected = sel?.kind === 'out' && sel.block === b.id && sel.port === i
-          const candidate = sel?.kind === 'in' && this.fits({ block: b.id, port: i }, sel)
-          const port = svg('g', { class: 'ipm-port ipm-out' + (selected ? ' ipm-selected' : '') +
-            (candidate ? ' ipm-candidate' : '') })
-          port.append(svg('circle', { cx: xy.x, cy: xy.y, r: 16, class: 'ipm-hit' }), svg('circle', { cx: xy.x, cy: xy.y, r: 6 }))
-          port.addEventListener('click', () => this.tapOutput(b, i))
-          g.append(port)
+        const g = drawBlock(b, pos[b.id], s, proved ? 'ipm-proved' : '', portClass)
+        for (const port of g.querySelectorAll('.ipm-port')) {
+          const i = Number(port.dataset.i)
+          port.addEventListener('click', () => port.dataset.kind === 'in' ? this.tapInput(b, i) : this.tapOutput(b, i))
+        }
+        g.addEventListener('click', ev => {
+          if (ev.target.closest('.ipm-port')) return
+          // Tapping an assumption or a goal is tapping its only port.
+          if (b.kind === 'assumption') this.tapOutput(b, 0)
+          else if (b.kind === 'conclusion') this.tapInput(b, 0)
+          else this.tapBlock(b)
         })
         root.append(g)
       }
@@ -441,9 +469,10 @@
       if (hint) body.append(el('div', 'ipm-sheet-hint', hint))
       for (const o of options) {
         if (o.section) { body.append(el('div', 'ipm-sheet-section', o.section)); continue }
-        const b = el('button', 'ipm-option' + (o.bad ? ' ipm-bad' : ''))
+        const b = el('button', 'ipm-option' + (o.bad ? ' ipm-bad' : '') + (o.picture ? ' ipm-option-picture' : ''))
         b.type = 'button'
-        b.append(el('span', 'ipm-option-main', o.label))
+        if (o.picture) { b.append(o.picture); b.title = o.label }
+        else b.append(el('span', 'ipm-option-main', o.label))
         if (o.detail) b.append(el('span', 'ipm-option-detail', o.detail))
         b.addEventListener('click', o.act)
         body.append(b)
@@ -470,8 +499,9 @@
         const r = RULES[name]
         const generic = x => show(instantiate(parse(x), r.vars, 'rule'))
         return {
+          picture: rulePicture(name),
           label: `${r.label}  ${r.inputs.map(generic).join(', ')} ⟹ ${r.outputs.map(generic).join(', ')}`,
-          detail: `add a ${r.name} block`,
+          detail: `${r.name} block`,
           act: () => {
             this.undoStack.push(this.proof.snapshot())
             this.proof.addRule(name)
