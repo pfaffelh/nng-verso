@@ -23,6 +23,7 @@ site/        the Verso project (Lean v4.35.0)
   NNGSite/worldmap.js    colours the map from the progress in localStorage
   scripts/gen_worlds.py  generates NNGSite/Worlds/*.lean from the game data
 deploy/      patch for the relay used on the public demo server
+docs/        design notes (docs/genre.md: a Verso genre for Lean games)
 tests/       protocol and end-to-end tests
 ```
 
