@@ -24,9 +24,16 @@ input_file levelJs where
 input_file levelCss where
   path := "../site/NNGSite/level.css"
 
+-- The proof graph editor (`Game/Ipm.lean`).
+input_file ipmJs where
+  path := "Game/ipm.js"
+
+input_file ipmCss where
+  path := "Game/ipm.css"
+
 @[default_target]
 lean_lib Game where
-  needs := #[levelJs, levelCss]
+  needs := #[levelJs, levelCss, ipmJs, ipmCss]
 
 -- The site: imports the game, so the game data exists when it is rendered.
 lean_lib Site

@@ -1,5 +1,6 @@
 import VersoManual
 import Game
+import Game.Worlds.Conjunction
 
 open Verso.Genre Manual
 
@@ -13,6 +14,8 @@ The same material appears twice for comparison: as a lesson in small steps on on
 game levels on separate pages.
 
 {include 1 Game.Worlds.RwLesson}
+
+{include 1 Game.Worlds.Conjunction}
 
 {include 1 Game.Worlds.Tutorial}
 

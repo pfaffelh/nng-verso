@@ -1,0 +1,482 @@
+// A tap-based proof graph editor in the style of the Incredible Proof Machine
+// (https://incredible.pm, Joachim Breitner, MIT license), for natural deduction.
+//
+// Each `.ipm-task` element is a task: given assumptions, prove the conclusions by connecting rule
+// blocks. Everything is checked in the browser: every connection is checked by unification, in the
+// order the connections were made, so a conflict is blamed on the newest connection (☠).
+//
+// Interaction works by tapping, so it also works on phones: tap a port to see what can be connected
+// to it — existing ports or new rule blocks whose propositions fit — and tap an option.
+
+(function () {
+  'use strict'
+
+  // ---------------------------------------------------------------- formulas
+
+  // Formulas: {t: 'atom', n} | {t: 'and'|'or'|'imp', a, b} | {t: 'not', a} | {t: 'bot'} | {t: 'meta', id}
+  function parse(src) {
+    const tokens = src.match(/[A-Za-z][\w']*|∧|∨|→|¬|⊥|\(|\)|->|\/\\|\\\/|~/g) ?? []
+    let i = 0
+    const eat = t => { if (tokens[i] === t) { i++; return true } return false }
+    const norm = { '/\\': '∧', '\\/': '∨', '->': '→', '~': '¬' }
+    tokens.forEach((t, k) => { tokens[k] = norm[t] ?? t })
+    // As in Lean, →, ∨ and ∧ are right-associative (the Incredible Proof Machine reads ∧ and ∨
+    // to the left), and ∧ binds more strongly than ∨, which binds more strongly than →.
+    const imp = () => { const a = or(); return eat('→') ? { t: 'imp', a, b: imp() } : a }
+    const or = () => { const a = and(); return eat('∨') ? { t: 'or', a, b: or() } : a }
+    const and = () => { const a = un(); return eat('∧') ? { t: 'and', a, b: and() } : a }
+    const un = () => {
+      if (eat('¬')) return { t: 'not', a: un() }
+      if (eat('⊥')) return { t: 'bot' }
+      if (eat('(')) { const a = imp(); eat(')'); return a }
+      const n = tokens[i++]
+      if (!n) throw new Error(`Cannot parse ${src}`)
+      return { t: 'atom', n }
+    }
+    const f = imp()
+    if (i < tokens.length) throw new Error(`Cannot parse ${src}`)
+    return f
+  }
+
+  const prec = { imp: 1, or: 2, and: 3, not: 4 }
+  function show(f, s = {}, ctx = 0) {
+    f = resolve(f, s)
+    const wrap = (p, txt) => (p < ctx ? `(${txt})` : txt)
+    switch (f.t) {
+      case 'atom': return f.n
+      case 'bot': return '⊥'
+      case 'meta': return '?' + f.id.split('.').pop()
+      case 'not': return wrap(4, '¬' + show(f.a, s, 4))
+      case 'and': return wrap(3, `${show(f.a, s, 4)} ∧ ${show(f.b, s, 3)}`)
+      case 'or': return wrap(2, `${show(f.a, s, 3)} ∨ ${show(f.b, s, 2)}`)
+      case 'imp': return wrap(1, `${show(f.a, s, 2)} → ${show(f.b, s, 1)}`)
+    }
+  }
+
+  function resolve(f, s) {
+    while (f.t === 'meta' && s[f.id]) f = s[f.id]
+    return f
+  }
+
+  const occurs = (id, f, s) => {
+    f = resolve(f, s)
+    if (f.t === 'meta') return f.id === id
+    return ['a', 'b'].some(k => f[k] && occurs(id, f[k], s))
+  }
+
+  // Unifies `x` and `y` under substitution `s`; returns the extended substitution or null.
+  function unify(x, y, s) {
+    x = resolve(x, s); y = resolve(y, s)
+    if (x.t === 'meta' && y.t === 'meta' && x.id === y.id) return s
+    if (x.t === 'meta') return occurs(x.id, y, s) ? null : { ...s, [x.id]: y }
+    if (y.t === 'meta') return unify(y, x, s)
+    if (x.t !== y.t) return null
+    if (x.t === 'atom') return x.n === y.n ? s : null
+    if (x.t === 'bot') return s
+    if (x.t === 'not') return unify(x.a, y.a, s)
+    const s1 = unify(x.a, y.a, s)
+    return s1 && unify(x.b, y.b, s1)
+  }
+
+  // Replaces the rule's variables by metavariables private to one block.
+  function instantiate(f, vars, block) {
+    if (f.t === 'atom' && vars.includes(f.n)) return { t: 'meta', id: `${block}.${f.n}` }
+    if (f.t === 'atom' || f.t === 'bot') return f
+    const g = { ...f }
+    if (f.a) g.a = instantiate(f.a, vars, block)
+    if (f.b) g.b = instantiate(f.b, vars, block)
+    return g
+  }
+
+  // ---------------------------------------------------------------- rules
+
+  const RULES = {
+    conjI: { label: '∧I', name: '∧-introduction', vars: ['A', 'B'], inputs: ['A', 'B'], outputs: ['A∧B'] },
+    conjE: { label: '∧E', name: '∧-elimination', vars: ['A', 'B'], inputs: ['A∧B'], outputs: ['A', 'B'] },
+  }
+
+  // ---------------------------------------------------------------- the proof state
+
+  class Proof {
+    constructor(assumptions, conclusions) {
+      this.blocks = []
+      this.connections = []
+      this.next = 0
+      for (const a of assumptions) this.addBlock({ kind: 'assumption', inputs: [], outputs: [parse(a)] })
+      for (const c of conclusions) this.addBlock({ kind: 'conclusion', inputs: [parse(c)], outputs: [] })
+    }
+
+    addBlock(b) {
+      b.id = `b${this.next++}`
+      this.blocks.push(b)
+      return b
+    }
+
+    addRule(name) {
+      const r = RULES[name], id = `b${this.next}`
+      return this.addBlock({
+        kind: 'rule', rule: name,
+        inputs: r.inputs.map(p => instantiate(parse(p), r.vars, id)),
+        outputs: r.outputs.map(p => instantiate(parse(p), r.vars, id)),
+      })
+    }
+
+    connect(from, to) {
+      // An input takes one connection.
+      this.connections = this.connections.filter(c => !(c.to.block === to.block && c.to.port === to.port))
+      this.connections.push({ id: `c${this.next++}`, from, to })
+    }
+
+    block(id) { return this.blocks.find(b => b.id === id) }
+
+    removeBlock(id) {
+      this.blocks = this.blocks.filter(b => b.id !== id)
+      this.connections = this.connections.filter(c => c.from.block !== id && c.to.block !== id)
+    }
+
+    snapshot() { return JSON.stringify({ b: this.blocks, c: this.connections, n: this.next }) }
+    restore(snap) { const o = JSON.parse(snap); this.blocks = o.b; this.connections = o.c; this.next = o.n }
+
+    // Whether connecting the output of `from` to `to` closes a cycle.
+    createsCycle(from, to) {
+      const succ = id => this.connections.filter(c => c.from.block === id).map(c => c.to.block)
+      const seen = new Set(), stack = [to]
+      while (stack.length) {
+        const x = stack.pop()
+        if (x === from) return true
+        if (seen.has(x)) continue
+        seen.add(x)
+        stack.push(...succ(x))
+      }
+      return false
+    }
+
+    // Checks all connections in the order they were made.
+    analyze() {
+      let s = {}
+      const status = {}
+      for (const c of this.connections) {
+        const out = this.block(c.from.block).outputs[c.from.port]
+        const inp = this.block(c.to.block).inputs[c.to.port]
+        const s1 = unify(out, inp, s)
+        if (s1) { s = s1; status[c.id] = 'ok' } else status[c.id] = 'fail'
+      }
+      const openInputs = []
+      for (const b of this.blocks)
+        b.inputs.forEach((_, i) => {
+          if (!this.connections.some(c => c.to.block === b.id && c.to.port === i && status[c.id] === 'ok'))
+            openInputs.push({ block: b.id, port: i })
+        })
+      const failed = this.connections.some(c => status[c.id] === 'fail')
+      const goalsDone = this.blocks.filter(b => b.kind === 'conclusion')
+        .every(b => !openInputs.some(o => o.block === b.id))
+      return { s, status, openInputs, qed: !failed && openInputs.length === 0 && goalsDone }
+    }
+  }
+
+  // ---------------------------------------------------------------- rendering
+
+  const SVG = 'http://www.w3.org/2000/svg'
+  const svg = (tag, attrs = {}, text) => {
+    const e = document.createElementNS(SVG, tag)
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v)
+    if (text !== undefined) e.textContent = text
+    return e
+  }
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag)
+    if (cls) e.className = cls
+    if (text !== undefined) e.textContent = text
+    return e
+  }
+  const charW = 8.4, layerH = 104, portGap = 18
+
+  class Task {
+    constructor(root, index) {
+      this.root = root
+      this.key = `ipm-verso:${location.pathname}:${index}`
+      this.assumptions = JSON.parse(root.dataset.assumptions)
+      this.conclusions = JSON.parse(root.dataset.conclusions)
+      this.rules = JSON.parse(root.dataset.rules)
+      this.proof = new Proof(this.assumptions, this.conclusions)
+      this.undoStack = []
+      try {
+        const saved = JSON.parse(localStorage.getItem(this.key))
+        if (saved?.proof) this.proof.restore(saved.proof)
+      } catch {}
+
+      this.canvas = el('div', 'ipm-canvas')
+      this.status = el('div', 'ipm-status')
+      const tools = el('div', 'ipm-tools')
+      const undo = el('button', 'ipm-button', '↶ Undo')
+      undo.type = 'button'
+      undo.addEventListener('click', () => this.undo())
+      const reset = el('button', 'ipm-button', 'Start over')
+      reset.type = 'button'
+      reset.addEventListener('click', () => { this.change(() => { this.proof = new Proof(this.assumptions, this.conclusions) }) })
+      tools.append(undo, reset, this.status)
+      this.sheet = el('div', 'ipm-sheet')
+      this.sheet.hidden = true
+      root.querySelector('.ipm-board').append(this.canvas, tools, this.sheet)
+      this.render()
+    }
+
+    change(act) {
+      this.undoStack.push(this.proof.snapshot())
+      act()
+      this.closeSheet()
+      this.render()
+    }
+
+    undo() {
+      const snap = this.undoStack.pop()
+      if (!snap) return
+      this.proof.restore(snap)
+      this.closeSheet()
+      this.render()
+    }
+
+    // ------------------------------------------------------------ layout and drawing
+
+    layout() {
+      const p = this.proof
+      const layer = {}
+      const order = p.blocks.filter(b => b.kind !== 'conclusion')
+      for (const b of p.blocks) if (b.kind === 'assumption') layer[b.id] = 0
+      // Longest path from the assumptions; unconnected rule blocks go to layer 1.
+      for (let round = 0; round < p.blocks.length; round++)
+        for (const b of order) {
+          if (b.kind === 'assumption') continue
+          const preds = p.connections.filter(c => c.to.block === b.id).map(c => layer[c.from.block] ?? 0)
+          layer[b.id] = 1 + Math.max(0, ...preds)
+        }
+      const last = 1 + Math.max(0, ...order.map(b => layer[b.id]))
+      for (const b of p.blocks) if (b.kind === 'conclusion') layer[b.id] = Math.max(last, 2)
+      const s = this.analysis.s
+      const pos = {}
+      const rows = {}
+      for (const b of p.blocks) (rows[layer[b.id]] ??= []).push(b)
+      let width = 320
+      const sizes = {}
+      for (const b of p.blocks) {
+        const texts = [...b.inputs, ...b.outputs].map(f => show(f, s))
+        const label = b.kind === 'rule' ? RULES[b.rule].label : ''
+        const inW = b.inputs.reduce((w, f) => w + show(f, s).length * charW + portGap, 0)
+        const outW = b.outputs.reduce((w, f) => w + show(f, s).length * charW + portGap, 0)
+        sizes[b.id] = { w: Math.max(56, inW, outW, label.length * 12 + 24, ...texts.map(t => t.length * charW + 20)), h: b.kind === 'rule' ? 62 : 34 }
+      }
+      for (const row of Object.values(rows)) width = Math.max(width, row.reduce((w, b) => w + sizes[b.id].w + 24, 24))
+      for (const [l, row] of Object.entries(rows)) {
+        const total = row.reduce((w, b) => w + sizes[b.id].w, 0) + 24 * (row.length - 1)
+        let x = (width - total) / 2
+        for (const b of row) {
+          pos[b.id] = { x, y: 20 + Number(l) * layerH, ...sizes[b.id] }
+          x += sizes[b.id].w + 24
+        }
+      }
+      const height = 20 + (Math.max(...Object.keys(rows).map(Number)) + 1) * layerH
+      return { pos, width, height }
+    }
+
+    portXY(pos, b, kind, i) {
+      const p = pos[b.id], n = kind === 'in' ? b.inputs.length : b.outputs.length
+      return { x: p.x + p.w * (i + 1) / (n + 1), y: kind === 'in' ? p.y : p.y + p.h }
+    }
+
+    render() {
+      const p = this.proof
+      this.analysis = p.analyze()
+      const { pos, width, height } = this.layout()
+      const s = this.analysis.s
+      const root = svg('svg', { viewBox: `0 0 ${width} ${height}`, class: 'ipm-svg' })
+      // connections
+      for (const c of p.connections) {
+        const a = this.portXY(pos, p.block(c.from.block), 'out', c.from.port)
+        const b = this.portXY(pos, p.block(c.to.block), 'in', c.to.port)
+        const st = this.analysis.status[c.id]
+        const dy = Math.max(30, (b.y - a.y) / 2)
+        const g = svg('g', { class: `ipm-conn ipm-${st}` })
+        g.append(svg('path', { d: `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}` }))
+        if (st === 'fail') {
+          const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+          const skull = svg('text', { x: m.x, y: m.y + 7, class: 'ipm-skull', 'text-anchor': 'middle' }, '☠')
+          skull.addEventListener('click', () => this.explain(c))
+          g.append(skull)
+        }
+        root.append(g)
+      }
+      // blocks
+      for (const b of p.blocks) {
+        const q = pos[b.id]
+        const g = svg('g', { class: `ipm-block ipm-${b.kind}` + (b.kind === 'conclusion' && !this.analysis.openInputs.some(o => o.block === b.id) ? ' ipm-proved' : '') })
+        g.append(svg('rect', { x: q.x, y: q.y, width: q.w, height: q.h, rx: 8 }))
+        if (b.kind === 'rule') {
+          const t = svg('text', { x: q.x + q.w / 2, y: q.y + q.h / 2 + 6, class: 'ipm-rule-label', 'text-anchor': 'middle' }, RULES[b.rule].label)
+          g.append(t)
+          g.addEventListener('click', ev => { if (!ev.target.closest('.ipm-port')) this.blockMenu(b) })
+          b.inputs.forEach((f, i) => g.append(svg('text', { x: this.portXY(pos, b, 'in', i).x, y: q.y + 17, 'text-anchor': 'middle', class: 'ipm-port-label' }, show(f, s))))
+          b.outputs.forEach((f, i) => g.append(svg('text', { x: this.portXY(pos, b, 'out', i).x, y: q.y + q.h - 8, 'text-anchor': 'middle', class: 'ipm-port-label' }, show(f, s))))
+        } else {
+          const f = b.kind === 'assumption' ? b.outputs[0] : b.inputs[0]
+          g.append(svg('text', { x: q.x + q.w / 2, y: q.y + q.h / 2 + 5, 'text-anchor': 'middle', class: 'ipm-prop' }, show(f, s)))
+        }
+        // ports
+        b.inputs.forEach((_, i) => {
+          const xy = this.portXY(pos, b, 'in', i)
+          const open = this.analysis.openInputs.some(o => o.block === b.id && o.port === i)
+          const port = svg('g', { class: 'ipm-port ipm-in' + (open ? ' ipm-open' : '') })
+          port.append(svg('circle', { cx: xy.x, cy: xy.y, r: 16, class: 'ipm-hit' }), svg('circle', { cx: xy.x, cy: xy.y, r: 6 }))
+          port.addEventListener('click', () => this.inputMenu(b, i))
+          g.append(port)
+        })
+        b.outputs.forEach((_, i) => {
+          const xy = this.portXY(pos, b, 'out', i)
+          const port = svg('g', { class: 'ipm-port ipm-out' })
+          port.append(svg('circle', { cx: xy.x, cy: xy.y, r: 16, class: 'ipm-hit' }), svg('circle', { cx: xy.x, cy: xy.y, r: 6 }))
+          port.addEventListener('click', () => this.outputMenu(b, i))
+          g.append(port)
+        })
+        root.append(g)
+      }
+      this.canvas.replaceChildren(root)
+      const qed = this.analysis.qed
+      this.root.classList.toggle('ipm-solved', qed)
+      this.status.textContent = qed ? 'Proof complete ✓' :
+        `${this.analysis.openInputs.length} open input${this.analysis.openInputs.length === 1 ? '' : 's'} — tap a red dot`
+      try { localStorage.setItem(this.key, JSON.stringify({ proof: this.proof.snapshot(), solved: qed })) } catch {}
+      if (qed) this.onSolved?.()
+    }
+
+    // ------------------------------------------------------------ menus
+
+    closeSheet() { this.sheet.hidden = true; this.sheet.replaceChildren() }
+
+    openSheet(title, options) {
+      this.sheet.replaceChildren(el('div', 'ipm-sheet-title', title))
+      for (const o of options) {
+        if (o.section) { this.sheet.append(el('div', 'ipm-sheet-section', o.section)); continue }
+        const b = el('button', 'ipm-option' + (o.bad ? ' ipm-bad' : ''))
+        b.type = 'button'
+        b.append(el('span', 'ipm-option-main', o.label))
+        if (o.detail) b.append(el('span', 'ipm-option-detail', o.detail))
+        b.addEventListener('click', o.act)
+        this.sheet.append(b)
+      }
+      const close = el('button', 'ipm-option ipm-close', 'Cancel')
+      close.type = 'button'
+      close.addEventListener('click', () => this.closeSheet())
+      this.sheet.append(close)
+      this.sheet.hidden = false
+      this.sheet.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+
+    describe(b) {
+      return b.kind === 'assumption' ? 'assumption' : b.kind === 'conclusion' ? 'goal' : RULES[b.rule].name
+    }
+
+    // An open input: connect an existing output, or a new rule whose output fits.
+    inputMenu(b, i) {
+      const p = this.proof, s = this.analysis.s, want = b.inputs[i]
+      const fits = [], misfits = []
+      for (const o of p.blocks) {
+        if (o.id === b.id) continue
+        o.outputs.forEach((f, j) => {
+          if (p.createsCycle(o.id, b.id)) return
+          const option = { label: `Use ${show(f, s)}`, detail: this.describe(o),
+            act: () => this.change(() => p.connect({ block: o.id, port: j }, { block: b.id, port: i })) }
+          if (unify(f, want, s)) fits.push(option); else misfits.push({ ...option, bad: true })
+        })
+      }
+      const rules = []
+      for (const name of this.rules) {
+        const r = RULES[name]
+        r.outputs.forEach((_, j) => {
+          const probe = instantiate(parse(r.outputs[j]), r.vars, 'probe')
+          const s1 = unify(probe, want, s)
+          if (!s1) return
+          const ins = r.inputs.map(x => show(instantiate(parse(x), r.vars, 'probe'), s1)).join(', ')
+          rules.push({ label: `${r.label} ${ins} ⟹ ${show(want, s)}`, detail: `new ${r.name} block`,
+            act: () => this.change(() => {
+              const nb = p.addRule(name)
+              p.connect({ block: nb.id, port: j }, { block: b.id, port: i })
+            }) })
+        })
+      }
+      const connected = p.connections.find(c => c.to.block === b.id && c.to.port === i)
+      const options = [...fits]
+      if (rules.length) options.push({ section: 'New block' }, ...rules)
+      if (misfits.length) options.push({ section: "Won't fit" }, ...misfits)
+      if (connected) options.push({ label: 'Disconnect', act: () => this.change(() => { p.connections = p.connections.filter(c => c !== connected) }) })
+      this.openSheet(`Prove ${show(want, s)}`, options)
+    }
+
+    // An output: connect it to an open input, or feed it into a new rule.
+    outputMenu(b, j) {
+      const p = this.proof, s = this.analysis.s, have = b.outputs[j]
+      const fits = [], misfits = []
+      for (const o of this.analysis.openInputs) {
+        if (o.block === b.id || p.createsCycle(b.id, o.block)) continue
+        const target = p.block(o.block), f = target.inputs[o.port]
+        const option = { label: `Use for ${show(f, s)}`, detail: this.describe(target),
+          act: () => this.change(() => p.connect({ block: b.id, port: j }, o)) }
+        if (unify(have, f, s)) fits.push(option); else misfits.push({ ...option, bad: true })
+      }
+      const rules = []
+      for (const name of this.rules) {
+        const r = RULES[name]
+        r.inputs.forEach((_, i) => {
+          const probe = instantiate(parse(r.inputs[i]), r.vars, 'probe')
+          const s1 = unify(probe, have, s)
+          if (!s1) return
+          const outs = r.outputs.map(x => show(instantiate(parse(x), r.vars, 'probe'), s1)).join(', ')
+          rules.push({ label: `${r.label} ${show(have, s)} ⟹ ${outs}`, detail: `new ${r.name} block`,
+            act: () => this.change(() => {
+              const nb = p.addRule(name)
+              p.connect({ block: b.id, port: j }, { block: nb.id, port: i })
+            }) })
+        })
+      }
+      const options = [...fits]
+      if (rules.length) options.push({ section: 'New block' }, ...rules)
+      if (misfits.length) options.push({ section: "Won't fit" }, ...misfits)
+      this.openSheet(`Use ${show(have, s)}`, options)
+    }
+
+    blockMenu(b) {
+      this.openSheet(RULES[b.rule].name, [
+        { label: 'Remove this block', act: () => this.change(() => this.proof.removeBlock(b.id)) },
+      ])
+    }
+
+    explain(c) {
+      const p = this.proof, s = this.analysis.s
+      const out = p.block(c.from.block).outputs[c.from.port], inp = p.block(c.to.block).inputs[c.to.port]
+      this.openSheet(`☠ ${show(out, s)} does not fit ${show(inp, s)}`, [
+        { label: 'Remove this connection', act: () => this.change(() => { p.connections = p.connections.filter(x => x !== c) }) },
+      ])
+    }
+  }
+
+  // Tasks on a page are revealed one at a time, like the steps of a lesson.
+  function init() {
+    const tasks = [...document.querySelectorAll('.ipm-task')].map((root, i) => new Task(root, i))
+    tasks.forEach((t, i) => t.root.prepend(el('div', 'ipm-task-label', `Task ${i + 1} of ${tasks.length}`)))
+    const update = scroll => {
+      const open = tasks.findIndex(t => !t.root.classList.contains('ipm-solved'))
+      tasks.forEach((t, i) => t.root.classList.toggle('ipm-locked', open >= 0 && i > open))
+      if (scroll && open >= 0) tasks[open].root.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    tasks.forEach(t => {
+      t.onSolved = () => {
+        if (t.reported) return
+        t.reported = true
+        setTimeout(() => update(true), 1200)
+      }
+      if (t.root.classList.contains('ipm-solved')) t.reported = true
+    })
+    update(false)
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init)
+  else init()
+})()

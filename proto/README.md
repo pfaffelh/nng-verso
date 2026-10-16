@@ -56,6 +56,22 @@ subterm. If plain `rw [rule]` would rewrite a different occurrence first, the ru
 arguments. Inside an unfinished `·` block the page fetches the goals with
 `Game.getInteractiveGoals`, so they can be clicked there too.
 
+## Proof graphs (after the Incredible Proof Machine)
+
+`Game/Worlds/Conjunction.lean` has the 12 tasks of session 1 of the
+[Incredible Proof Machine](https://incredible.pm) (Joachim Breitner, MIT license) as proof graphs:
+assumptions at the top, goals at the bottom, connected by rule blocks (∧I, ∧E). Lean conventions
+apply: `∧` groups to the right, so the Proof Machine's `A∧B∧C` is written `(A ∧ B) ∧ C`.
+
+* `::::task (assumptions := …) (conclusions := …)` (`Game/Ipm.lean`) contains a hidden Lean proof
+  of the task, checked when the site is built.
+* The editor (`Game/ipm.js`) checks proofs in the browser, without a server: every connection is
+  checked by unification in the order the connections were made, so a conflict is blamed on the
+  newest connection (☠, tap it for an explanation). Any correct graph is accepted.
+* It is operated by tapping, for phones: tap an open input (red) or an output (blue) and choose
+  from the connections and new rule blocks that fit; the layout is automatic. Tasks are revealed one
+  at a time.
+
 ## Measuring blind clicking
 
 `MeasureBlindClicking` in `Game.lean` (after `MakeGame`, see `Game/Blind.lean`) simulates a player

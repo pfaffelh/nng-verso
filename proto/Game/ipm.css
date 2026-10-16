@@ -1,0 +1,73 @@
+.ipm-task {
+  border: 1px solid #c9d3e0;
+  border-radius: 6px;
+  padding: 0.6em 0.9em;
+  margin: 1.2em 0;
+  background: #f8fafc;
+  font-family: var(--verso-text-font-family, sans-serif);
+}
+.ipm-task.ipm-solved { border-color: #3c9a5f; }
+.ipm-task-label { font-size: 0.8em; color: #3b6db3; font-weight: bold; }
+.ipm-task.ipm-solved .ipm-task-label::after { content: " ✓"; color: #2e7d4f; }
+.ipm-task.ipm-locked { background: #f3f4f6; border-style: dashed; }
+.ipm-task.ipm-locked > :not(.ipm-task-label) { display: none; }
+.ipm-task.ipm-locked .ipm-task-label { color: #999; }
+.ipm-task.ipm-locked .ipm-task-label::after { content: " 🔒"; }
+
+.ipm-canvas { overflow-x: auto; }
+.ipm-svg { width: 100%; max-width: 640px; height: auto; display: block; margin: 0 auto; touch-action: manipulation; }
+.ipm-svg text { font-family: var(--verso-code-font-family, monospace); font-size: 14px; }
+
+.ipm-block rect { fill: white; stroke: #8a9bb3; stroke-width: 1.5; }
+.ipm-assumption rect { fill: #e8f0fb; stroke: #3b6db3; }
+.ipm-conclusion rect { fill: #fdecec; stroke: #c0392b; }
+.ipm-conclusion.ipm-proved rect { fill: #e6f4ea; stroke: #2e7d4f; }
+.ipm-rule rect { cursor: pointer; }
+.ipm-rule-label { font-weight: bold; font-size: 16px !important; fill: #333; }
+.ipm-port-label { font-size: 12px !important; fill: #555; }
+.ipm-prop { font-weight: bold; }
+
+.ipm-port { cursor: pointer; }
+.ipm-port .ipm-hit { fill: transparent; stroke: none; }
+.ipm-port circle:not(.ipm-hit) { fill: #3b6db3; stroke: white; stroke-width: 2; }
+.ipm-port.ipm-in circle:not(.ipm-hit) { fill: #2e7d4f; }
+.ipm-port.ipm-in.ipm-open circle:not(.ipm-hit) { fill: white; stroke: #c0392b; stroke-width: 3; }
+
+.ipm-conn path { fill: none; stroke: #3b6db3; stroke-width: 2.5; }
+.ipm-conn.ipm-fail path { stroke: #c0392b; stroke-dasharray: 6 4; }
+.ipm-skull { font-size: 22px !important; cursor: pointer; fill: #c0392b; }
+
+.ipm-tools { display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap; margin-top: 0.4em; }
+.ipm-button {
+  padding: 0.25em 0.7em; border-radius: 4px; border: 1px solid #b8c4d4; background: white; cursor: pointer;
+}
+.ipm-status { font-size: 0.9em; color: #555; }
+.ipm-solved .ipm-status { color: #2e7d4f; font-weight: bold; }
+
+/* The options for a tapped port: sticks to the bottom of the screen on small screens. */
+.ipm-sheet {
+  position: sticky;
+  bottom: 0;
+  margin-top: 0.5em;
+  background: white;
+  border: 1px solid #3b6db3;
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.12);
+  padding: 0.6em;
+  max-height: 55vh;
+  overflow-y: auto;
+  z-index: 10;
+}
+.ipm-sheet-title { font-weight: bold; margin-bottom: 0.4em; font-family: var(--verso-code-font-family, monospace); }
+.ipm-sheet-section { font-size: 0.8em; color: #777; margin: 0.6em 0 0.2em; text-transform: uppercase; }
+.ipm-option {
+  display: flex; flex-direction: column; align-items: flex-start; width: 100%;
+  margin: 0.25em 0; padding: 0.55em 0.7em; min-height: 44px;
+  border: 1px solid #b8c4d4; border-radius: 6px; background: #f8fafc; cursor: pointer; text-align: left;
+}
+.ipm-option:hover { border-color: #3b6db3; background: #e8f0fb; }
+.ipm-option-main { font-family: var(--verso-code-font-family, monospace); }
+.ipm-option-detail { font-size: 0.8em; color: #666; }
+.ipm-option.ipm-bad { opacity: 0.7; }
+.ipm-option.ipm-bad .ipm-option-main::after { content: "  ☠"; color: #c0392b; }
+.ipm-option.ipm-close { align-items: center; background: white; }
