@@ -224,7 +224,8 @@
     change(act) {
       this.undoStack.push(this.proof.snapshot())
       act()
-      this.closeSheet()
+      this.selected = null
+      this.closeSheet(false)
       this.render()
     }
 
@@ -232,7 +233,8 @@
       const snap = this.undoStack.pop()
       if (!snap) return
       this.proof.restore(snap)
-      this.closeSheet()
+      this.selected = null
+      this.closeSheet(false)
       this.render()
     }
 
@@ -313,27 +315,39 @@
         if (b.kind === 'rule') {
           const t = svg('text', { x: q.x + q.w / 2, y: q.y + q.h / 2 + 6, class: 'ipm-rule-label', 'text-anchor': 'middle' }, RULES[b.rule].label)
           g.append(t)
-          g.addEventListener('click', ev => { if (!ev.target.closest('.ipm-port')) this.blockMenu(b) })
+          g.addEventListener('click', ev => { if (!ev.target.closest('.ipm-port')) this.tapBlock(b) })
           b.inputs.forEach((f, i) => g.append(svg('text', { x: this.portXY(pos, b, 'in', i).x, y: q.y + 17, 'text-anchor': 'middle', class: 'ipm-port-label' }, show(f, s))))
           b.outputs.forEach((f, i) => g.append(svg('text', { x: this.portXY(pos, b, 'out', i).x, y: q.y + q.h - 8, 'text-anchor': 'middle', class: 'ipm-port-label' }, show(f, s))))
         } else {
           const f = b.kind === 'assumption' ? b.outputs[0] : b.inputs[0]
           g.append(svg('text', { x: q.x + q.w / 2, y: q.y + q.h / 2 + 5, 'text-anchor': 'middle', class: 'ipm-prop' }, show(f, s)))
+          // Tapping an assumption or a goal is tapping its only port.
+          g.addEventListener('click', ev => {
+            if (ev.target.closest('.ipm-port')) return
+            if (b.kind === 'assumption') this.tapOutput(b, 0); else this.tapInput(b, 0)
+          })
         }
+        const sel = this.selected
         // ports
         b.inputs.forEach((_, i) => {
           const xy = this.portXY(pos, b, 'in', i)
           const open = this.analysis.openInputs.some(o => o.block === b.id && o.port === i)
-          const port = svg('g', { class: 'ipm-port ipm-in' + (open ? ' ipm-open' : '') })
+          const selected = sel?.kind === 'in' && sel.block === b.id && sel.port === i
+          const candidate = sel?.kind === 'out' && open && this.fits(sel, { block: b.id, port: i })
+          const port = svg('g', { class: 'ipm-port ipm-in' + (open ? ' ipm-open' : '') +
+            (selected ? ' ipm-selected' : '') + (candidate ? ' ipm-candidate' : '') })
           port.append(svg('circle', { cx: xy.x, cy: xy.y, r: 16, class: 'ipm-hit' }), svg('circle', { cx: xy.x, cy: xy.y, r: 6 }))
-          port.addEventListener('click', () => this.inputMenu(b, i))
+          port.addEventListener('click', () => this.tapInput(b, i))
           g.append(port)
         })
         b.outputs.forEach((_, i) => {
           const xy = this.portXY(pos, b, 'out', i)
-          const port = svg('g', { class: 'ipm-port ipm-out' })
+          const selected = sel?.kind === 'out' && sel.block === b.id && sel.port === i
+          const candidate = sel?.kind === 'in' && this.fits({ block: b.id, port: i }, sel)
+          const port = svg('g', { class: 'ipm-port ipm-out' + (selected ? ' ipm-selected' : '') +
+            (candidate ? ' ipm-candidate' : '') })
           port.append(svg('circle', { cx: xy.x, cy: xy.y, r: 16, class: 'ipm-hit' }), svg('circle', { cx: xy.x, cy: xy.y, r: 6 }))
-          port.addEventListener('click', () => this.outputMenu(b, i))
+          port.addEventListener('click', () => this.tapOutput(b, i))
           g.append(port)
         })
         root.append(g)
@@ -341,52 +355,114 @@
       this.canvas.replaceChildren(root)
       const qed = this.analysis.qed
       this.root.classList.toggle('ipm-solved', qed)
+      const n = this.analysis.openInputs.length
       this.status.textContent = qed ? 'Proof complete ✓' :
-        `${this.analysis.openInputs.length} open input${this.analysis.openInputs.length === 1 ? '' : 's'} — tap a red dot`
+        this.selected?.kind === 'in' ? 'Now tap a glowing green dot (or its box)' :
+        this.selected?.kind === 'out' ? 'Now tap a glowing green circle' :
+        `${n} red circle${n === 1 ? '' : 's'} left — tap one`
       try { localStorage.setItem(this.key, JSON.stringify({ proof: this.proof.snapshot(), solved: qed })) } catch {}
       if (qed) this.onSolved?.()
     }
 
+    // ------------------------------------------------------------ tapping
+
+    // Whether output `o` fits input `i` (both {block, port}) without a cycle.
+    fits(o, i) {
+      const p = this.proof
+      if (o.block === i.block || p.createsCycle(o.block, i.block)) return false
+      return !!unify(p.block(o.block).outputs[o.port], p.block(i.block).inputs[i.port], this.analysis.s)
+    }
+
+    // Draws a line from output `o` to input `i`; one that does not fit gets a ☠.
+    link(o, i) {
+      if (o.block === i.block || this.proof.createsCycle(o.block, i.block)) {
+        this.status.textContent = 'That would go round in a circle.'
+        return
+      }
+      this.selected = null
+      this.change(() => this.proof.connect(o, i))
+    }
+
+    tapInput(b, i) {
+      const sel = this.selected
+      if (sel?.kind === 'out') return this.link(sel, { block: b.id, port: i })
+      if (sel?.kind === 'in' && sel.block === b.id && sel.port === i) return this.closeSheet()
+      this.selected = { kind: 'in', block: b.id, port: i }
+      this.render()
+      this.inputMenu(b, i)
+    }
+
+    tapOutput(b, j) {
+      const sel = this.selected
+      if (sel?.kind === 'in') return this.link({ block: b.id, port: j }, sel)
+      if (sel?.kind === 'out' && sel.block === b.id && sel.port === j) return this.closeSheet()
+      this.selected = { kind: 'out', block: b.id, port: j }
+      this.render()
+      this.outputMenu(b, j)
+    }
+
+    // A rule block: completes a pending selection with its fitting port, or offers to remove it.
+    tapBlock(b) {
+      const sel = this.selected
+      if (sel?.kind === 'in') {
+        const j = b.outputs.findIndex((_, j) => this.fits({ block: b.id, port: j }, sel))
+        return this.link({ block: b.id, port: Math.max(j, 0) }, sel)
+      }
+      if (sel?.kind === 'out') {
+        const open = this.analysis.openInputs.filter(o => o.block === b.id)
+        const target = open.find(o => this.fits(sel, o)) ?? open[0] ?? { block: b.id, port: 0 }
+        return this.link(sel, target)
+      }
+      this.blockMenu(b)
+    }
+
     // ------------------------------------------------------------ menus
 
-    closeSheet() { this.sheet.hidden = true; this.sheet.replaceChildren() }
+    closeSheet(rerender = true) {
+      this.sheet.hidden = true
+      this.sheet.replaceChildren()
+      if (this.selected) {
+        this.selected = null
+        if (rerender) this.render()
+      }
+    }
 
-    openSheet(title, options) {
-      this.sheet.replaceChildren(el('div', 'ipm-sheet-title', title))
+    // The sheet shows one line (title, number of new blocks) and folds out on tap. It starts
+    // unfolded only when `unfold` is set, i.e. when nothing in the picture fits.
+    openSheet(title, options, hint, unfold = true) {
+      const n = options.filter(o => !o.section && /new /.test(o.detail ?? '')).length
+      const head = el('div', 'ipm-sheet-head')
+      const toggle = el('span', 'ipm-sheet-toggle')
+      head.append(el('div', 'ipm-sheet-title', title), toggle)
+      const body = el('div', 'ipm-sheet-body')
+      if (hint) body.append(el('div', 'ipm-sheet-hint', hint))
       for (const o of options) {
-        if (o.section) { this.sheet.append(el('div', 'ipm-sheet-section', o.section)); continue }
+        if (o.section) { body.append(el('div', 'ipm-sheet-section', o.section)); continue }
         const b = el('button', 'ipm-option' + (o.bad ? ' ipm-bad' : ''))
         b.type = 'button'
         b.append(el('span', 'ipm-option-main', o.label))
         if (o.detail) b.append(el('span', 'ipm-option-detail', o.detail))
         b.addEventListener('click', o.act)
-        this.sheet.append(b)
+        body.append(b)
       }
       const close = el('button', 'ipm-option ipm-close', 'Cancel')
       close.type = 'button'
       close.addEventListener('click', () => this.closeSheet())
-      this.sheet.append(close)
+      body.append(close)
+      const setFolded = folded => {
+        this.sheet.classList.toggle('ipm-folded', folded)
+        toggle.textContent = folded ? `${n ? `${n} new block${n === 1 ? '' : 's'} ` : 'more '}▸` : 'less ▾'
+      }
+      head.addEventListener('click', () => setFolded(!this.sheet.classList.contains('ipm-folded')))
+      this.sheet.replaceChildren(head, body)
+      setFolded(!unfold)
       this.sheet.hidden = false
       this.sheet.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
 
-    describe(b) {
-      return b.kind === 'assumption' ? 'assumption' : b.kind === 'conclusion' ? 'goal' : RULES[b.rule].name
-    }
-
-    // An open input: connect an existing output, or a new rule whose output fits.
+    // A selected input: existing outputs are tapped in the picture; the sheet offers new blocks.
     inputMenu(b, i) {
       const p = this.proof, s = this.analysis.s, want = b.inputs[i]
-      const fits = [], misfits = []
-      for (const o of p.blocks) {
-        if (o.id === b.id) continue
-        o.outputs.forEach((f, j) => {
-          if (p.createsCycle(o.id, b.id)) return
-          const option = { label: `Use ${show(f, s)}`, detail: this.describe(o),
-            act: () => this.change(() => p.connect({ block: o.id, port: j }, { block: b.id, port: i })) }
-          if (unify(f, want, s)) fits.push(option); else misfits.push({ ...option, bad: true })
-        })
-      }
       const rules = []
       for (const name of this.rules) {
         const r = RULES[name]
@@ -396,31 +472,23 @@
           if (!s1) return
           const ins = r.inputs.map(x => show(instantiate(parse(x), r.vars, 'probe'), s1)).join(', ')
           rules.push({ label: `${r.label} ${ins} ⟹ ${show(want, s)}`, detail: `new ${r.name} block`,
-            act: () => this.change(() => {
+            act: () => { this.selected = null; this.change(() => {
               const nb = p.addRule(name)
               p.connect({ block: nb.id, port: j }, { block: b.id, port: i })
-            }) })
+            }) } })
         })
       }
       const connected = p.connections.find(c => c.to.block === b.id && c.to.port === i)
-      const options = [...fits]
-      if (rules.length) options.push({ section: 'New block' }, ...rules)
-      if (misfits.length) options.push({ section: "Won't fit" }, ...misfits)
-      if (connected) options.push({ label: 'Disconnect', act: () => this.change(() => { p.connections = p.connections.filter(c => c !== connected) }) })
-      this.openSheet(`Prove ${show(want, s)}`, options)
+      const options = [...rules]
+      if (connected) options.push({ label: 'Disconnect', act: () => { this.selected = null; this.change(() => { p.connections = p.connections.filter(c => c !== connected) }) } })
+      const anyFit = p.blocks.some(o => o.outputs.some((_, j) => this.fits({ block: o.id, port: j }, { block: b.id, port: i })))
+      this.openSheet(`Prove ${show(want, s)}`, options,
+        anyFit ? 'Tap a glowing green dot in the picture, or add a new block:' : 'Nothing in the picture fits yet. Add a new block:', !anyFit)
     }
 
-    // An output: connect it to an open input, or feed it into a new rule.
+    // A selected output: open inputs are tapped in the picture; the sheet offers new blocks.
     outputMenu(b, j) {
       const p = this.proof, s = this.analysis.s, have = b.outputs[j]
-      const fits = [], misfits = []
-      for (const o of this.analysis.openInputs) {
-        if (o.block === b.id || p.createsCycle(b.id, o.block)) continue
-        const target = p.block(o.block), f = target.inputs[o.port]
-        const option = { label: `Use for ${show(f, s)}`, detail: this.describe(target),
-          act: () => this.change(() => p.connect({ block: b.id, port: j }, o)) }
-        if (unify(have, f, s)) fits.push(option); else misfits.push({ ...option, bad: true })
-      }
       const rules = []
       for (const name of this.rules) {
         const r = RULES[name]
@@ -430,16 +498,15 @@
           if (!s1) return
           const outs = r.outputs.map(x => show(instantiate(parse(x), r.vars, 'probe'), s1)).join(', ')
           rules.push({ label: `${r.label} ${show(have, s)} ⟹ ${outs}`, detail: `new ${r.name} block`,
-            act: () => this.change(() => {
+            act: () => { this.selected = null; this.change(() => {
               const nb = p.addRule(name)
               p.connect({ block: b.id, port: j }, { block: nb.id, port: i })
-            }) })
+            }) } })
         })
       }
-      const options = [...fits]
-      if (rules.length) options.push({ section: 'New block' }, ...rules)
-      if (misfits.length) options.push({ section: "Won't fit" }, ...misfits)
-      this.openSheet(`Use ${show(have, s)}`, options)
+      const anyFit = this.analysis.openInputs.some(o => this.fits({ block: b.id, port: j }, o))
+      this.openSheet(`Use ${show(have, s)}`, rules,
+        anyFit ? 'Tap a glowing green circle in the picture, or add a new block:' : 'No red circle fits. Add a new block:', !anyFit)
     }
 
     blockMenu(b) {

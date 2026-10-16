@@ -68,9 +68,11 @@ apply: `∧` groups to the right, so the Proof Machine's `A∧B∧C` is written 
 * The editor (`Game/ipm.js`) checks proofs in the browser, without a server: every connection is
   checked by unification in the order the connections were made, so a conflict is blamed on the
   newest connection (☠, tap it for an explanation). Any correct graph is accepted.
-* It is operated by tapping, for phones: tap an open input (red) or an output (blue) and choose
-  from the connections and new rule blocks that fit; the layout is automatic. Tasks are revealed one
-  at a time.
+* It is operated by tapping, for phones: tap a red circle (something to prove), and the outputs
+  that fit glow green; tap one of them or its box to draw the line. It works the other way round,
+  too (blue dot first). New rule blocks are offered in a sheet that folds to one line, so the
+  picture stays visible; it unfolds by itself when nothing in the picture fits. The layout is
+  automatic. Tasks are revealed one at a time.
 
 ## Measuring blind clicking
 

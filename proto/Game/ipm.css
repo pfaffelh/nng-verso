@@ -16,7 +16,8 @@
 
 .ipm-canvas { overflow-x: auto; }
 .ipm-svg { width: 100%; max-width: 640px; height: auto; display: block; margin: 0 auto; touch-action: manipulation; }
-.ipm-svg text { font-family: var(--verso-code-font-family, monospace); font-size: 14px; }
+.ipm-svg text { font-family: var(--verso-code-font-family, monospace); font-size: 14px; pointer-events: none; }
+.ipm-svg .ipm-skull { pointer-events: auto; }
 
 .ipm-block rect { fill: white; stroke: #8a9bb3; stroke-width: 1.5; }
 .ipm-assumption rect { fill: #e8f0fb; stroke: #3b6db3; }
@@ -54,15 +55,15 @@
   border-radius: 8px 8px 0 0;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.12);
   padding: 0.6em;
-  max-height: 55vh;
+  max-height: 35vh;
   overflow-y: auto;
   z-index: 10;
 }
 .ipm-sheet-title { font-weight: bold; margin-bottom: 0.4em; font-family: var(--verso-code-font-family, monospace); }
 .ipm-sheet-section { font-size: 0.8em; color: #777; margin: 0.6em 0 0.2em; text-transform: uppercase; }
 .ipm-option {
-  display: flex; flex-direction: column; align-items: flex-start; width: 100%;
-  margin: 0.25em 0; padding: 0.55em 0.7em; min-height: 44px;
+  display: inline-flex; flex-direction: column; align-items: flex-start;
+  margin: 0.2em 0.3em 0.2em 0; padding: 0.45em 0.7em; min-height: 44px;
   border: 1px solid #b8c4d4; border-radius: 6px; background: #f8fafc; cursor: pointer; text-align: left;
 }
 .ipm-option:hover { border-color: #3b6db3; background: #e8f0fb; }
@@ -75,3 +76,16 @@
 @keyframes ipm-pulse { 0%, 100% { stroke-width: 3; } 50% { stroke-width: 6; } }
 .ipm-port.ipm-in.ipm-open circle:not(.ipm-hit) { animation: ipm-pulse 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .ipm-port.ipm-in.ipm-open circle:not(.ipm-hit) { animation: none; } }
+
+/* Selection: the tapped port, and the ports that fit it */
+.ipm-port.ipm-selected circle:not(.ipm-hit) { fill: #f1c40f !important; stroke: #b7950b !important; stroke-width: 3; }
+@keyframes ipm-glow { 0%, 100% { r: 7; } 50% { r: 11; } }
+.ipm-port.ipm-candidate circle:not(.ipm-hit) { fill: #2ecc71 !important; stroke: #1e8449 !important; stroke-width: 3; animation: ipm-glow 1s ease-in-out infinite; }
+.ipm-assumption, .ipm-conclusion { cursor: pointer; }
+
+/* The sheet folds to one line, so that the picture stays visible. */
+.ipm-sheet-head { display: flex; align-items: center; gap: 0.5em; cursor: pointer; min-height: 36px; }
+.ipm-sheet-head .ipm-sheet-title { margin: 0; flex: 1; }
+.ipm-sheet-toggle { font-size: 0.85em; color: #3b6db3; white-space: nowrap; }
+.ipm-sheet-hint { font-size: 0.85em; color: #555; margin: 0.3em 0; }
+.ipm-sheet.ipm-folded .ipm-sheet-body { display: none; }
