@@ -74,7 +74,8 @@ apply: `∧` groups to the right, so the Proof Machine's `A∧B∧C` is written 
   them, drawn as the very block they add, in a sheet that folds to one line; choosing one only
   adds the block, which the player then
   connects. Undetermined parts are shown as `?1`, `?2` until unification fills them in. The layout
-  is automatic. Tasks are revealed one at a time.
+  is automatic, and blocks can be dragged with mouse or finger (kept across reloads; "Tidy up"
+  restores the automatic layout). Tasks are revealed one at a time.
 
 ## Measuring blind clicking
 

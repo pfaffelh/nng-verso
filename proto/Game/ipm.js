@@ -134,11 +134,13 @@
 
     removeBlock(id) {
       this.blocks = this.blocks.filter(b => b.id !== id)
+      if (this.moved) delete this.moved[id]
       this.connections = this.connections.filter(c => c.from.block !== id && c.to.block !== id)
     }
 
-    snapshot() { return JSON.stringify({ b: this.blocks, c: this.connections, n: this.next }) }
-    restore(snap) { const o = JSON.parse(snap); this.blocks = o.b; this.connections = o.c; this.next = o.n }
+    // `moved` holds the positions of blocks the player has dragged.
+    snapshot() { return JSON.stringify({ b: this.blocks, c: this.connections, n: this.next, m: this.moved ?? {} }) }
+    restore(snap) { const o = JSON.parse(snap); this.blocks = o.b; this.connections = o.c; this.next = o.n; this.moved = o.m ?? {} }
 
     // Whether connecting the output of `from` to `to` closes a cycle.
     createsCycle(from, to) {
@@ -193,6 +195,12 @@
     return e
   }
   const charW = 8.4, layerH = 104, portGap = 18
+
+  // The line from output position `a` down to input position `b`.
+  function curve(a, b) {
+    const dy = Math.max(30, Math.abs(b.y - a.y) / 2)
+    return `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}`
+  }
 
   // Size of a block, from its labels.
   function blockSize(b, s) {
@@ -270,7 +278,11 @@
       const reset = el('button', 'ipm-button', 'Start over')
       reset.type = 'button'
       reset.addEventListener('click', () => { this.change(() => { this.proof = new Proof(this.assumptions, this.conclusions) }) })
-      tools.append(undo, reset, this.status)
+      const tidy = el('button', 'ipm-button', 'Tidy up')
+      tidy.type = 'button'
+      tidy.title = 'Arrange the blocks automatically again'
+      tidy.addEventListener('click', () => { this.change(() => { this.proof.moved = {} }) })
+      tools.append(undo, reset, tidy, this.status)
       this.sheet = el('div', 'ipm-sheet')
       this.sheet.hidden = true
       root.querySelector('.ipm-board').append(this.canvas, tools, this.sheet)
@@ -326,26 +338,84 @@
           x += sizes[b.id].w + 24
         }
       }
-      const height = 20 + (Math.max(...Object.keys(rows).map(Number)) + 1) * layerH
-      return { pos, width, height }
+      for (const [id, m] of Object.entries(p.moved ?? {})) if (pos[id]) Object.assign(pos[id], m)
+      // The picture covers all blocks, wherever they were dragged.
+      const qs = Object.values(pos)
+      const minX = Math.min(0, ...qs.map(q => q.x - 20)), minY = Math.min(0, ...qs.map(q => q.y - 20))
+      const maxX = Math.max(width, ...qs.map(q => q.x + q.w + 20))
+      const maxY = Math.max(20 + (Math.max(...Object.keys(rows).map(Number)) + 1) * layerH, ...qs.map(q => q.y + q.h + 20))
+      return { pos, view: [minX, minY, maxX - minX, maxY - minY] }
     }
 
     portXY(pos, b, kind, i) { return portAt(pos[b.id], b, kind, i) }
 
+    // Blocks can be dragged with mouse, finger or pen. A movement of a few pixels or less counts
+    // as a tap. While dragging, the lines at the block follow it; the new position is kept.
+    makeDraggable(g, b, pos, paths, tap) {
+      // On touch screens the browser would take a drag on a block for scrolling (it ignores
+      // `touch-action` on SVG elements). Prevent that; then there is no click either, so a touch
+      // without movement is handled as a tap below.
+      g.addEventListener('touchstart', e => { if (!e.target.closest('.ipm-port')) e.preventDefault() }, { passive: false })
+      g.addEventListener('pointerdown', ev => {
+        if (ev.target.closest('.ipm-port') || ev.button > 0) return
+        const toSvg = e => {
+          const pt = this.svgRoot.createSVGPoint()
+          pt.x = e.clientX; pt.y = e.clientY
+          return pt.matrixTransform(this.svgRoot.getScreenCTM().inverse())
+        }
+        const start = toSvg(ev), q = pos[b.id]
+        let moved = false, d = { x: 0, y: 0 }
+        try { g.setPointerCapture(ev.pointerId) } catch {}
+        const move = e => {
+          const now = toSvg(e)
+          d = { x: now.x - start.x, y: now.y - start.y }
+          if (!moved && Math.hypot(d.x, d.y) < 6) return
+          moved = true
+          g.classList.add('ipm-dragging')
+          g.setAttribute('transform', `translate(${d.x},${d.y})`)
+          for (const { path, c, a, b: to } of paths) {
+            const from = c.from.block === b.id ? { x: a.x + d.x, y: a.y + d.y } : a
+            const dest = c.to.block === b.id ? { x: to.x + d.x, y: to.y + d.y } : to
+            if (from !== a || dest !== to) path.setAttribute('d', curve(from, dest))
+          }
+        }
+        const up = e => {
+          g.removeEventListener('pointermove', move)
+          g.removeEventListener('pointerup', up)
+          g.removeEventListener('pointercancel', up)
+          if (!moved) {
+            if (ev.pointerType === 'touch' && e.type === 'pointerup') tap()
+            return
+          }
+          this.justDragged = true
+          setTimeout(() => { this.justDragged = false }, 0)
+          this.undoStack.push(this.proof.snapshot())
+          this.proof.moved = { ...(this.proof.moved ?? {}), [b.id]: { x: q.x + d.x, y: q.y + d.y } }
+          this.render()
+        }
+        g.addEventListener('pointermove', move)
+        g.addEventListener('pointerup', up)
+        g.addEventListener('pointercancel', up)
+      })
+    }
+
     render() {
       const p = this.proof
       this.analysis = p.analyze()
-      const { pos, width, height } = this.layout()
+      const { pos, view } = this.layout()
       const s = this.analysis.s
-      const root = svg('svg', { viewBox: `0 0 ${width} ${height}`, class: 'ipm-svg' })
+      const root = svg('svg', { viewBox: view.join(' '), class: 'ipm-svg' })
+      this.svgRoot = root
+      const paths = []  // connection paths, to follow a dragged block
       // connections
       for (const c of p.connections) {
         const a = this.portXY(pos, p.block(c.from.block), 'out', c.from.port)
         const b = this.portXY(pos, p.block(c.to.block), 'in', c.to.port)
         const st = this.analysis.status[c.id]
-        const dy = Math.max(30, (b.y - a.y) / 2)
         const g = svg('g', { class: `ipm-conn ipm-${st}` })
-        g.append(svg('path', { d: `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}` }))
+        const path = svg('path', { d: curve(a, b) })
+        paths.push({ path, c, a, b })
+        g.append(path)
         if (st === 'fail') {
           const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
           const skull = svg('text', { x: m.x, y: m.y + 7, class: 'ipm-skull', 'text-anchor': 'middle' }, '☠')
@@ -374,12 +444,17 @@
           const i = Number(port.dataset.i)
           port.addEventListener('click', () => port.dataset.kind === 'in' ? this.tapInput(b, i) : this.tapOutput(b, i))
         }
-        g.addEventListener('click', ev => {
-          if (ev.target.closest('.ipm-port')) return
-          // Tapping an assumption or a goal is tapping its only port.
+        // Tapping an assumption or a goal is tapping its only port.
+        const tap = () => {
           if (b.kind === 'assumption') this.tapOutput(b, 0)
           else if (b.kind === 'conclusion') this.tapInput(b, 0)
           else this.tapBlock(b)
+        }
+        this.makeDraggable(g, b, pos, paths, tap)
+        g.addEventListener('click', ev => {
+          if (this.justDragged) { this.justDragged = false; return }
+          if (ev.target.closest('.ipm-port')) return
+          tap()
         })
         root.append(g)
       }

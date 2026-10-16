@@ -98,3 +98,8 @@
 .ipm-rule-picture .ipm-port circle:not(.ipm-hit) { fill: #3b6db3; stroke: white; stroke-width: 2; }
 .ipm-rule-picture .ipm-port.ipm-in circle:not(.ipm-hit) { fill: white; stroke: #c0392b; stroke-width: 3; animation: none; }
 .ipm-rule-picture .ipm-port .ipm-hit { fill: transparent; }
+
+/* Dragging blocks: a block does not scroll the page when touched; empty space still does. */
+.ipm-svg .ipm-block { touch-action: none; cursor: grab; }
+.ipm-svg .ipm-block.ipm-dragging { cursor: grabbing; opacity: 0.85; }
+.ipm-svg .ipm-block.ipm-dragging rect { stroke-width: 2.5; }
