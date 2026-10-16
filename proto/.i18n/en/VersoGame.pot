@@ -1,7 +1,7 @@
 msgid ""
 msgstr "Project-Id-Version: VersoGame v4.31.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-15\n"
+"POT-Creation-Date: 2026-10-16\n"
 "Last-Translator: \n"
 "Language-Team: none\n"
 "Language: en\n"
@@ -112,8 +112,8 @@ msgstr ""
 
 #. §0: `add_zero a`
 #. §1: `a + 0 = a`
-#: Game/MyNat.lean:57
-#: Game/MyNat.lean:60
+#: Game/MyNat.lean:58
+#: Game/MyNat.lean:61
 msgid "§0 is a proof of §1."
 msgstr ""
 
@@ -123,14 +123,14 @@ msgstr ""
 #. §3: `d`
 #. §4: `hd`
 #. §5: `succ d`
-#: Game/MyNat.lean:53
+#: Game/MyNat.lean:54
 msgid "§0 proves a statement about §1 by proving it for §2 and, assuming it\n"
 "for §3 (hypothesis §4), for §5."
 msgstr ""
 
 #. §0: `rfl`
 #. §1: `X = X`
-#: Game/MyNat.lean:47
+#: Game/MyNat.lean:48
 msgid "§0 proves goals of the form §1."
 msgstr ""
 
@@ -141,6 +141,6 @@ msgstr ""
 #. §4: `rw [← h]`
 #. §5: `Y`
 #. §6: `X`
-#: Game/MyNat.lean:50
+#: Game/MyNat.lean:51
 msgid "§0 replaces §1 by §2 in the goal if §3. §4 replaces §5 by §6."
 msgstr ""

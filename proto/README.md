@@ -37,6 +37,15 @@ Shown after the level is solved.
 * `Game.lean` imports the worlds and runs `MakeGame`, which writes `.lake/gamedata`. The site reads
   the available tactics and theorems of each level from there when it is rendered.
 
+## Clicking subterms
+
+Goals are shown as nested subterms. Clicking one asks the game server (`Game/Rewrite.lean`, RPC
+method `Game.rewriteSuggestions`) which theorems and hypotheses rewrite exactly this subterm, and
+offers the tactics, e.g. `rw [add_zero a] → a`. Clicking the same spot again selects the enclosing
+subterm. If plain `rw [rule]` would rewrite a different occurrence first, the rule gets its explicit
+arguments. Inside an unfinished `·` block the page fetches the goals with
+`Game.getInteractiveGoals`, so they can be clicked there too.
+
 ## Building and playing
 
 ```bash

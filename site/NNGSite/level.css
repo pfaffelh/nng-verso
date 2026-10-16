@@ -109,3 +109,29 @@
 .nng-level .nng-msg-head pre { white-space: pre-wrap; margin: 0; }
 .nng-level .nng-msg-details { margin-left: 4.5em; font-size: 0.85em; color: #555; }
 .nng-level .nng-msg-details pre { white-space: pre-wrap; margin: 0.2em 0; }
+
+/* Clickable subterms and rewrite suggestions */
+.nng-level .nng-clickable .nng-sub { cursor: pointer; border-radius: 3px; }
+.nng-level .nng-clickable .nng-sub.nng-hover { background: #e3ecf9; }
+.nng-level .nng-sub.nng-selected { background: #c9dcf5; outline: 1px solid #3b6db3; }
+.nng-level .nng-suggest {
+  background: #f1f6fd;
+  border-left: 3px solid #3b6db3;
+  padding: 0.4em 0.6em;
+  margin: -0.3em 0 0.6em;
+  font-size: 0.9em;
+}
+.nng-level .nng-suggest-title { color: #555; margin-bottom: 0.3em; }
+.nng-level .nng-suggestion {
+  display: block;
+  margin: 0.2em 0;
+  padding: 0.2em 0.5em;
+  border: 1px solid #b8c4d4;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.nng-level .nng-suggestion:hover { background: #e8f0fb; border-color: #3b6db3; }
+.nng-level .nng-suggest-result { color: #555; font-family: var(--verso-code-font-family, monospace); }

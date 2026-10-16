@@ -1,4 +1,5 @@
 import GameServer
+import Game.Rewrite
 
 /-!
 # Natural numbers for the prototype game
