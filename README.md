@@ -95,6 +95,23 @@ The demo runs on a separate machine as an unprivileged user:
 * Reachable from outside via a Cloudflare quick tunnel: `cloudflared tunnel --url http://localhost:8080`.
 * Each player session needs about 1.7 GB of RAM.
 
+## GitHub Pages with the Lean Game Server of the HHU
+
+The site can also run without a server of our own: as static pages on GitHub Pages, connected
+from the browser to the [Lean Game Server](https://adam.math.hhu.de) of the HHU Düsseldorf, which
+runs `leanprover-community/nng4` (it accepts WebSocket connections from other origins).
+`.github/workflows/pages.yml` builds it:
+
+* `site/scripts/fetch-gamedata.py` downloads the game data (game, inventory, levels, docs) from
+  the server into `nng4/.lake/gamedata`, so nng4 and Mathlib need not be built, and the texts and
+  levels match the game the server runs. Only the `nng4` submodule is checked out, for its German
+  translations.
+* The site is rendered with
+  `NNG_RELAY_URL=wss://adam.math.hhu.de/websocket/g/leanprover-community/nng4`.
+
+The workflow runs only when started by hand (Actions tab, “Run workflow”), until the HHU has agreed;
+GitHub Pages must be set to “GitHub Actions” as source in the repository settings.
+
 ## Tests
 
 ```bash

@@ -1,0 +1,64 @@
+name: Build and deploy (GitHub Pages, Lean Game Server of the HHU)
+
+# The site is static; the Lean side (relay and nng4) is the Lean Game Server of the HHU Düsseldorf,
+# which the page connects to from the browser. For now only started by hand (Actions tab), until the
+# HHU has agreed that the site uses their server.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  GAME_SERVER: https://adam.math.hhu.de
+  GAME: leanprover-community/nng4
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Only nng4, and only for its German translations (`.i18n/de/Game.json`); the game data come
+      # from the server, so nng4 (and Mathlib) need not be built.
+      - name: Checkout nng4
+        run: git submodule update --init --depth 1 nng4
+
+      - name: Fetch the game data from the server
+        run: python3 site/scripts/fetch-gamedata.py "$GAME_SERVER/data/g/$GAME"
+
+      - name: Build the site's Lean project
+        uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: site
+          test: false
+          lint: false
+          use-mathlib-cache: false
+
+      - name: Generate the site
+        working-directory: site
+        run: |
+          NNG_RELAY_URL="wss://${GAME_SERVER#https://}/websocket/g/$GAME" lake exe nng-site --output _out/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/_out/html-multi
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,224 @@
+msgid ""
+msgstr "Project-Id-Version: VersoGame v4.31.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-16\n"
+"Last-Translator: \n"
+"Language-Team: none\n"
+"Language: en\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Poedit-Basepath: ../..\n"
+"X-Poedit-SearchPath-0: ."
+
+#: Game.lean:14
+msgid "A small game whose levels are written in Verso documents."
+msgstr ""
+
+#: Game/Worlds/Addition.lean:12
+msgid "Addition World"
+msgstr ""
+
+#. §0: `rfl`
+#: Game/Worlds/Tutorial.lean:25
+msgid "Both sides are identical. Click on §0."
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:51
+msgid "Choose the place"
+msgstr ""
+
+#. §0: `b + 0`
+#. §1: `+`
+#. §2: `b`
+#. §3: `0`
+#: Game/Worlds/RwLesson.lean:57
+msgid "Click on §0 in the goal on the right (on the §1 between §2 and §3)."
+msgstr ""
+
+#. §0: `a + 0`
+#. §1: `h`
+#: Game/Worlds/RwLesson.lean:88
+msgid "Click on §0 in the hypothesis §1."
+msgstr ""
+
+#. §0: `rw`
+#. §1: `h`
+#: Game/Worlds/RwLesson.lean:27
+msgid "Click on §0, then on §1."
+msgstr ""
+
+#. §0: `add_zero`
+#: Game/Worlds/RwLesson.lean:42
+msgid "Click on §0."
+msgstr ""
+
+#: Game/Worlds/Addition.lean:57
+msgid "Exercise: four rewrites"
+msgstr ""
+
+#. §0: $x$
+#. §1: $y$
+#. §2: $x + y = x + y$
+#: Game/Worlds/Tutorial.lean:23
+msgid "For all natural numbers §0 and §1, we have §2."
+msgstr ""
+
+#. §0: $a$
+#. §1: $a + 0 + 0 = a$
+#: Game/Worlds/Addition.lean:24
+#: Game/Worlds/Addition.lean:39
+msgid "For every natural number §0, we have §1."
+msgstr ""
+
+#. §0: `0 +`
+#: Game/Worlds/Addition.lean:64
+msgid "Get rid of §0 first."
+msgstr ""
+
+#. §0: $y = x$
+#. §1: $y + y = x + x$
+#: Game/Worlds/Tutorial.lean:41
+#: Game/Worlds/Addition.lean:62
+msgid "If §0, then §1."
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:17
+msgid "Lesson: rw"
+msgstr ""
+
+#. §0: `x`
+#. §1: `z`
+#: Game/Worlds/RwLesson.lean:74
+msgid "Now replace §0 by §1."
+msgstr ""
+
+#. §0: `h`
+#: Game/Worlds/RwLesson.lean:90
+msgid "Now §0 says exactly what you need."
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:22
+msgid "Replace"
+msgstr ""
+
+#. §0: `y`
+#. §1: `x`
+#. §2: `rw [h]`
+#: Game/Worlds/Tutorial.lean:43
+msgid "Replace §0 by §1 with §2."
+msgstr ""
+
+#. §0: `y`
+#. §1: `x`
+#. §2: `rw [← h₁]`
+#. §3: `y`
+#: Game/Worlds/RwLesson.lean:72
+msgid "Replace §0 by §1 with §2: click on §3."
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:83
+msgid "Rewrite a hypothesis"
+msgstr ""
+
+#. §0: `add_zero`
+#: Game/Worlds/Addition.lean:26
+msgid "Rewrite with §0 twice."
+msgstr ""
+
+#. §0: `induction n with d hd`
+#. §1: `n`
+#: Game/Worlds/Addition.lean:41
+msgid "Start with §0: click on §1."
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:66
+msgid "The other direction"
+msgstr ""
+
+#: Game/Worlds/Tutorial.lean:18
+msgid "The rfl tactic"
+msgstr ""
+
+#: Game/Worlds/Tutorial.lean:36
+msgid "The rw tactic"
+msgstr ""
+
+#: Game/Worlds/RwLesson.lean:37
+msgid "Theorems are equations"
+msgstr ""
+
+#. §0: `0`
+#. §1: `0 + 0`
+#: Game/Worlds/Addition.lean:43
+msgid "This is the case §0. Which rule applies to §1?"
+msgstr ""
+
+#: Game/Worlds/Tutorial.lean:11
+msgid "Tutorial World"
+msgstr ""
+
+#. §0: `add_succ`
+#. §1: `succ`
+#. §2: `hd`
+#: Game/Worlds/Addition.lean:45
+msgid "Use §0 to move §1 to the outside, then the hypothesis §2."
+msgstr ""
+
+#: Game.lean:13
+msgid "Verso Game Prototype"
+msgstr ""
+
+#: Game/Worlds/Addition.lean:19
+msgid "add_zero"
+msgstr ""
+
+#: GameServer/RpcHandlers.lean:190
+msgid "intermediate goal solved! 🎉"
+msgstr ""
+
+#: GameServer/RpcHandlers.lean:177
+msgid "level completed with warnings… 🎭"
+msgstr ""
+
+#: GameServer/RpcHandlers.lean:169
+msgid "level completed! 🎉"
+msgstr ""
+
+#: Game/Worlds/Addition.lean:33
+msgid "zero_add"
+msgstr ""
+
+#. §0: `add_zero a`
+#. §1: `a + 0 = a`
+#: Game/MyNat.lean:58
+#: Game/MyNat.lean:61
+msgid "§0 is a proof of §1."
+msgstr ""
+
+#. §0: `induction n with d hd`
+#. §1: `n`
+#. §2: `0`
+#. §3: `d`
+#. §4: `hd`
+#. §5: `succ d`
+#: Game/MyNat.lean:54
+msgid "§0 proves a statement about §1 by proving it for §2 and, assuming it\n"
+"for §3 (hypothesis §4), for §5."
+msgstr ""
+
+#. §0: `rfl`
+#. §1: `X = X`
+#: Game/MyNat.lean:48
+msgid "§0 proves goals of the form §1."
+msgstr ""
+
+#. §0: `rw [h]`
+#. §1: `X`
+#. §2: `Y`
+#. §3: `h : X = Y`
+#. §4: `rw [← h]`
+#. §5: `Y`
+#. §6: `X`
+#: Game/MyNat.lean:51
+msgid "§0 replaces §1 by §2 in the goal if §3. §4 replaces §5 by §6."
+msgstr ""

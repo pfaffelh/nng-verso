@@ -202,31 +202,59 @@
   // Tokens of a goal, for highlighting what a step changed.
   const tokenize = s => s.match(/\s+|[()]|[^\s()]+/g) ?? []
 
-  // Marks the tokens of `cur` that are not part of a longest common subsequence with `prev`.
-  function changedTokens(prev, cur) {
-    const a = tokenize(prev), b = tokenize(cur)
-    const n = a.length, m = b.length
+  // For each token of `cur`, whether it is not part of a longest common subsequence with `prev`.
+  function changedFlags(prev, cur) {
+    const n = prev.length, m = cur.length
     const L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
     for (let i = n - 1; i >= 0; i--)
       for (let j = m - 1; j >= 0; j--)
-        L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1])
+        L[i][j] = prev[i] === cur[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1])
     const changed = new Array(m).fill(true)
     for (let i = 0, j = 0; i < n && j < m;) {
-      if (a[i] === b[j]) { changed[j] = false; i++; j++ }
+      if (prev[i] === cur[j]) { changed[j] = false; i++; j++ }
       else if (L[i + 1][j] >= L[i][j + 1]) i++
       else j++
     }
-    return b.map((t, j) => [t, changed[j] && t.trim() !== ''])
+    return changed.map((c, j) => c && cur[j].trim() !== '')
   }
 
-  function renderExpr(text, previous) {
-    const span = el('span', 'nng-expr')
-    if (previous === undefined || previous === text) {
-      span.textContent = text
-      return span
+  // Renders Lean's interactive code (`TaggedText`): each tagged subterm becomes a `.nng-sub` span
+  // carrying its position (`subexprPos`), so that it can be clicked. Tokens that differ from
+  // `previous` (the same goal before the current line) are marked.
+  function renderCode(code, previous) {
+    const leaves = []
+    const collect = t => {
+      if (t == null) return
+      if (typeof t === 'string') leaves.push(t)
+      else if (t.text !== undefined) leaves.push(t.text)
+      else if (t.append) t.append.forEach(collect)
+      else if (t.tag) collect(t.tag[1])
     }
-    for (const [t, changed] of changedTokens(previous, text))
-      span.appendChild(changed ? el('mark', 'nng-changed', t) : document.createTextNode(t))
+    collect(code)
+    const flat = leaves.flatMap(tokenize)
+    const text = leaves.join('')
+    const changed = previous !== undefined && previous !== text ? changedFlags(tokenize(previous), flat) : null
+    let k = 0
+    const build = t => {
+      const frag = document.createDocumentFragment()
+      if (t == null) return frag
+      if (typeof t === 'string' || t.text !== undefined) {
+        for (const tok of tokenize(typeof t === 'string' ? t : t.text)) {
+          const c = changed?.[k++]
+          frag.appendChild(c ? el('mark', 'nng-changed', tok) : document.createTextNode(tok))
+        }
+      } else if (t.append) {
+        t.append.forEach(x => frag.appendChild(build(x)))
+      } else if (t.tag) {
+        const span = el('span', 'nng-sub')
+        span.dataset.pos = t.tag[0]?.subexprPos ?? ''
+        span.appendChild(build(t.tag[1]))
+        frag.appendChild(span)
+      }
+      return frag
+    }
+    const span = el('span', 'nng-expr')
+    span.appendChild(build(code))
     return span
   }
 
@@ -234,6 +262,19 @@
   const abbreviations = {
     l: '←', '<-': '←', r: '→', to: '→', '->': '→', ne: '≠', le: '≤', ge: '≥',
     N: 'ℕ', and: '∧', or: '∨', not: '¬', '.': '·', forall: '∀', exists: '∃', iff: '↔',
+  }
+
+  // The statement of a theorem from its signature, e.g. `a + 0 = a` from ` (a : ℕ) : a + 0 = a`:
+  // the part after the last ` : ` outside brackets.
+  function conclusionOf(type) {
+    let depth = 0, cut = 0
+    for (let i = 0; i < type.length; i++) {
+      if ('([{'.includes(type[i])) depth++
+      else if (')]}'.includes(type[i])) depth--
+      else if (depth === 0 && type.startsWith(' : ', i)) cut = i + 3
+    }
+    // Drop namespaces such as `MyNat.` in `MyNat.succ b`, as the goals show them.
+    return type.slice(cut).trim().replace(/\b[A-Z][\w']*\.(?=[a-z_])/g, '')
   }
 
   // What the palette inserts for a tactic; `|` marks the position of the cursor afterwards.
@@ -268,6 +309,13 @@
       this.lemmaTypes = new Map([...root.querySelectorAll('.nng-lemma')]
         .map(b => [b.dataset.insert, b.dataset.type ?? '']))
       this.lemmas = new Set(this.lemmaTypes.keys())
+      // Theorem buttons show what the theorem says; the name, which is inserted, is the tooltip.
+      for (const b of root.querySelectorAll('.nng-lemma[data-type]')) {
+        const statement = conclusionOf(b.dataset.type)
+        if (!statement) continue
+        b.title = `${b.dataset.insert} :${b.dataset.type.slice(b.dataset.type.lastIndexOf(' : ') + 2)}`
+        b.replaceChildren(el('span', 'nng-lemma-statement', statement))
+      }
       this.undoStack = []
       this.lastTyped = 0
       this.lastEditWasDelete = false
@@ -423,14 +471,7 @@
       const expectsName = inBrackets ||
         /(^|\s)(exact|apply|intro|use|cases|induction|at|have|contrapose!?)\s+$/.test(lineBefore)
       if (!expectsName) {
-        // The statement after the last top-level ` : ` (theorems carry their parameters).
-        let depth = 0, cut = 0
-        for (let i = 0; i < type.length; i++) {
-          if ('([{'.includes(type[i])) depth++
-          else if (')]}'.includes(type[i])) depth--
-          else if (depth === 0 && type.startsWith(' : ', i)) cut = i + 3
-        }
-        const statement = type.slice(cut)
+        const statement = conclusionOf(type)
         // A natural number: start an induction on it, if that is available.
         if (statement.trim() === 'ℕ') {
           if (this.root.querySelector('.nng-tactic[data-insert="induction"]'))
@@ -562,7 +603,8 @@
         if (previous && previous.opened) {
           conn.notify('textDocument/didClose', { textDocument: { uri: previous.uri } })
           previous.opened = false
-          previous.setStatus('Paused – click into the editor to continue.')
+          if (!previous.root.classList.contains('nng-completed'))
+            previous.setStatus('Paused – click into the editor to continue.')
         }
         this.version = 1
         this.sentText = this.editor.value
@@ -709,8 +751,10 @@
     }
 
     markCompleted() {
+      const isNew = !this.root.classList.contains('nng-completed')
       this.root.classList.add('nng-completed')
       if (this.conclusion) this.conclusion.hidden = false
+      if (isNew) this.onCompleted?.()
     }
 
     // ------------------------------------------------------------ rendering
@@ -736,13 +780,91 @@
         row.appendChild(document.createTextNode(' : '))
         const old = h.names.map(n => oldHyps.get(n)).find(t => t !== undefined)
         if (previous && old === undefined) row.classList.add('nng-new-hyp')
-        row.appendChild(renderExpr(type, previous ? old : undefined))
+        row.dataset.hyp = h.names[0]
+        row.appendChild(renderCode(h.type, previous ? old : undefined))
         box.appendChild(row)
       }
       const target = el('div', 'nng-target', g.goalPrefix ?? '⊢ ')
-      target.appendChild(renderExpr(taggedText(g.type), previous ? taggedText(previous.type) : undefined))
+      target.appendChild(renderCode(g.type, previous ? taggedText(previous.type) : undefined))
       box.appendChild(target)
+      // Goals from the server carry what is needed to ask about a subterm; goals parsed from a
+      // message do not.
+      if (g.ctx && g.mvarId) {
+        box.classList.add('nng-clickable')
+        box.addEventListener('mouseover', ev => {
+          box.querySelector('.nng-hover')?.classList.remove('nng-hover')
+          ev.target.closest('.nng-sub')?.classList.add('nng-hover')
+        })
+        box.addEventListener('mouseleave', () => box.querySelector('.nng-hover')?.classList.remove('nng-hover'))
+        box.addEventListener('click', ev => {
+          let sub = ev.target.closest('.nng-sub')
+          if (!sub || ev.target.closest('.nng-hyp-name')) return
+          // Clicking the same spot again selects the enclosing subterm.
+          const selected = box.querySelector('.nng-selected')
+          if (selected && sub === this.lastClicked && selected.contains(sub))
+            sub = selected.parentElement.closest('.nng-sub') ?? selected
+          else this.lastClicked = sub
+          this.suggestRewrites(g, sub.closest('.nng-hyp')?.dataset.hyp, sub, box)
+        })
+      }
       return box
+    }
+
+    // Asks the server which theorems and hypotheses rewrite the clicked subterm (see
+    // `Game.Rewrite` in the game) and offers the resulting tactics.
+    async suggestRewrites(g, hyp, sub, box) {
+      this.goals.querySelectorAll('.nng-selected').forEach(x => x.classList.remove('nng-selected'))
+      this.goals.querySelectorAll('.nng-suggest').forEach(x => x.remove())
+      sub.classList.add('nng-selected')
+      const panel = el('div', 'nng-suggest', 'Looking for rules …')
+      box.after(panel)
+      const candidates = [...this.lemmas, ...g.hyps.flatMap(h => h.names)]
+      let suggestions
+      try {
+        suggestions = await this.rpc('Game.rewriteSuggestions',
+          { ctx: g.ctx, mvarId: g.mvarId, hyp, pos: sub.dataset.pos, candidates })
+      } catch (e) {
+        panel.textContent = 'No suggestions available here.'
+        return
+      }
+      panel.replaceChildren()
+      if (!suggestions.length) {
+        panel.textContent = 'Nothing you have can rewrite this term.'
+        return
+      }
+      panel.appendChild(el('div', 'nng-suggest-title', hyp ? `Rewrite in ${hyp}:` : 'Rewrite:'))
+      for (const s of suggestions) {
+        const b = el('button', 'nng-suggestion')
+        b.type = 'button'
+        b.appendChild(el('code', null, s.tactic))
+        b.appendChild(el('span', 'nng-suggest-result', ` → ${s.result}`))
+        b.addEventListener('mousedown', ev => ev.preventDefault())
+        b.addEventListener('click', () => { this.lastEditWasDelete = false; this.insertTactic(s.tactic) })
+        panel.appendChild(b)
+      }
+    }
+
+    async rpc(method, params) {
+      const conn = await getConnection()
+      const pos = { line: 0, character: 0 }
+      return conn.request('$/lean/rpc/call', {
+        method, sessionId: this.sessionId, textDocument: { uri: this.uri }, position: pos, params,
+      })
+    }
+
+    // The goals at the end of line `line`, from the server (with subterm positions), or null.
+    async fetchGoalsAt(line) {
+      const text = this.editor.value.split('\n')[line] ?? ''
+      const key = `${this.version}:${line}`
+      if (this.goalsAt?.key === key) return
+      this.goalsAt = { key, goals: null }
+      try {
+        const r = await this.rpc('Game.getInteractiveGoals',
+          { textDocument: { uri: this.uri }, position: { line, character: text.length } })
+        if (this.goalsAt.key !== key) return
+        this.goalsAt.goals = r?.goals ?? null
+        this.renderState()
+      } catch { /* keep the goals parsed from the message */ }
     }
 
     // If the cursor is at the end of a `·` block that is not finished, the goals left in it,
@@ -812,6 +934,11 @@
       // block; the goals in the block are listed in its "unsolved goals" error instead.
       const blockGoals = this.openBlockGoals(state, cursorLine)
       if (blockGoals) {
+        // Prefer the goals from the server, which can be clicked; fetch them if needed.
+        const key = `${this.version}:${blockGoals.lastLine}`
+        if (this.goalsAt?.key === key && this.goalsAt.goals)
+          blockGoals.goals = this.goalsAt.goals.map(goal => ({ goal, hints: [] }))
+        else this.fetchGoalsAt(blockGoals.lastLine)
         step = { goals: blockGoals.goals }
         before = (steps.filter(s => s.line <= blockGoals.lastLine).pop()?.goals ?? []).map(g => g.goal)
       }
@@ -893,8 +1020,25 @@
     }
   }
 
+  // The steps of a lesson (`.nng-step`) are revealed one at a time: a step is shown once all steps
+  // before it are solved.
+  function initSteps(levels) {
+    const steps = levels.filter(l => l.root.classList.contains('nng-step'))
+    if (!steps.length) return
+    steps.forEach((l, i) => l.root.prepend(el('div', 'nng-step-label', `Step ${i + 1} of ${steps.length}`)))
+    const update = scroll => {
+      const open = steps.findIndex(l => !l.root.classList.contains('nng-completed'))
+      steps.forEach((l, i) => l.root.classList.toggle('nng-locked', open >= 0 && i > open))
+      if (scroll && open >= 0) steps[open].root.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    update(false)
+    // Give the player a moment to read the conclusion before moving on.
+    steps.forEach(l => { l.onCompleted = () => setTimeout(() => update(true), 1500) })
+  }
+
   function init() {
-    document.querySelectorAll('.nng-level').forEach(root => new Level(root))
+    const levels = [...document.querySelectorAll('.nng-level')].map(root => new Level(root))
+    initSteps(levels)
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init)

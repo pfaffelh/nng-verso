@@ -3,3 +3,4 @@ site/_out/
 site/_deploy/
 node_modules/
 *.log
+proto/_out/
