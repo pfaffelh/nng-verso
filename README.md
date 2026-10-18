@@ -109,8 +109,8 @@ runs `leanprover-community/nng4` (it accepts WebSocket connections from other or
 * The site is rendered with
   `NNG_RELAY_URL=wss://adam.math.hhu.de/websocket/g/leanprover-community/nng4`.
 
-The workflow runs only when started by hand (Actions tab, “Run workflow”), until the HHU has agreed;
-GitHub Pages must be set to “GitHub Actions” as source in the repository settings.
+Every push to `main` builds and publishes it (GitHub Pages, source “GitHub Actions”):
+https://pfaffelh.github.io/nng-verso/
 
 ## Tests
 

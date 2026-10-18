@@ -1,9 +1,11 @@
 name: Build and deploy (GitHub Pages, Lean Game Server of the HHU)
 
 # The site is static; the Lean side (relay and nng4) is the Lean Game Server of the HHU Düsseldorf,
-# which the page connects to from the browser. For now only started by hand (Actions tab), until the
-# HHU has agreed that the site uses their server.
+# which the page connects to from the browser (as Jon Eugster suggested).
 on:
+  push:
+    branches: [main]
+  # Allow manual runs from the Actions tab
   workflow_dispatch:
 
 permissions:
