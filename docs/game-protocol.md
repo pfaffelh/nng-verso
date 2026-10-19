@@ -66,7 +66,7 @@ A level is a JSON object. Example: Tutorial level 2 of the Natural Number Game.
 {
   "format": "lean-game-level/0.1",
   "id": "nng4/Tutorial/2",
-  "env": { "base": "nng4", "imports": ["Game.Levels.Tutorial.L01rfl"] },
+  "env": { "base": "nng4@v4.23.0", "imports": ["Game.Levels.Tutorial.L01rfl"] },
   "preamble": "",
   "statement": "(x y : ℕ) (h : y = x + 7) : 2 * y = 2 * (x + 7)",
   "name": null,
@@ -91,9 +91,11 @@ A level is a JSON object. Example: Tutorial level 2 of the Natural Number Game.
 ```
 
 * **`env`**: the Lean environment the level is elaborated in. `base` names an environment that the
-  server keeps warm (here the game nng4; for other games `"Mathlib"` or `"core"`); `imports` are
+  server keeps warm, **with its version** (here the game nng4 on Lean v4.23.0; for other games
+  `"mathlib@v4.26.0"`, the Mathlib that goes with that Lean, or `"core@v4.26.0"`); `imports` are
   modules of it. The base is what makes moves fast: loading Mathlib takes seconds and gigabytes, the
-  small context of a level does not.
+  small context of a level does not. The version matters, since Lean and Mathlib rename and change
+  things: the same text can mean something else, or nothing, in another version.
 * **`preamble`**: Lean code elaborated after the imports (definitions, notation, earlier theorems).
   This is how a frontend brings its own levels without a server build. The IPM, for instance, would
   send its statements as propositions (`(A B : Prop) (h₁ : A ∧ B) : B ∧ A`) with an empty preamble.
@@ -123,7 +125,7 @@ id). Methods:
 ### `game/start`
 
 ```json
-{ "base": "nng4", "context": "namespace MyNat",
+{ "base": "nng4@v4.23.0", "context": "namespace MyNat",
   "statement": "example (x y : ℕ) (h : y = x + 7) : 2 * y = 2 * (x + 7)" }
 ```
 
@@ -215,10 +217,15 @@ Ends the session and frees its state.
   input, and checks typed lines before it sends them). For a learning game this is enough: who
   cheats, cheats himself. Where results count (grades, leaderboards), a server can check a finished
   proof once more against the rules; that is a separate, optional service.
-* **Contexts by their content**: the server knows no games; it keeps every context it has elaborated
-  under a hash of its text, and the players of a game, who send the same context, share it. A
-  frontend may send the hash first and the text only when the server asks for it (`"context":
-  {"sha256": "…"}`).
+* **Contexts by their content**: the server knows no games; it keeps every context it has elaborated,
+  and the players of a game, who send the same context, share it. A frontend may send the hash of
+  the text first and the text only when the server asks for it (`"context": {"sha256": "…"}`).
+  Two keys, for two purposes:
+  * the **cache** of elaborated contexts is keyed by the base with its version *and* the text: the
+    same text gives another environment under another Lean or Mathlib;
+  * **admission** (below) is keyed by the text alone: what an operator has looked at and let in does
+    not change with the version (an operator who wants to check new versions first can key it by
+    both).
 * **Which contexts a server accepts** is the operator's choice:
   1. *open*: any context, with strict limits per move and per client (development, small servers);
   2. *open, with known contexts first*: known contexts get generous limits, unknown ones very tight
@@ -231,8 +238,13 @@ Ends the session and frees its state.
 * **Sandbox and limits**: moves run Lean code (tactics, `#eval` in a preamble), so they run in a
   sandbox with limits on time per move, memory, and sessions per client. Limits are reported in
   `game/start` (`"limits": { "msPerStep": 5000, … }`) and errors say which one was hit.
-* **Warm environments**: the server keeps the bases (`nng4`, `Mathlib`) loaded and forks sessions
-  from them; a level's preamble is elaborated once per session.
+* **Warm environments**: the server keeps the bases (`nng4@v4.23.0`, `mathlib@v4.26.0`) loaded and
+  forks sessions from them; a context is elaborated once per base and then shared.
+* **Versions of bases**: the server says in `game/start` (and on request) which bases it offers.
+  When Lean or Mathlib move on, it offers the old and the new base side by side for a while, so that
+  games written for the old one keep running until their authors have moved their contexts. A
+  context that does not elaborate under the requested base gives a clear error (`"kind": "context",
+  "message": "does not elaborate under mathlib@v4.26.0: unknown identifier …"`), never a silent one.
 * **Identification and versions**: a frontend names itself (`"client": "nng-verso/0.3"`) and the
   protocol version it speaks; the server answers with its version. Operators can then see who uses
   what, and frontends learn about changes before they break.
