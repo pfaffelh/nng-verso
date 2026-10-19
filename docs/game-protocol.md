@@ -32,7 +32,8 @@ What is missing is a thin layer on top:
    or *not possible, because …*. The Lean REPL and Pantograph show that this works; they have no game
    rules, though.
 2. **Game rules**: which tactics and theorems are allowed, which hint belongs to which goal, when a
-   level counts as solved. lean4game has these, but built into its server.
+   level counts as solved. lean4game has these, built into its server. In this proposal they are
+   part of the level format and applied by the frontend (§5); the backend stays plain Lean.
 3. **Levels as data**: today a game must be compiled into the server (`MakeGame`); hints, for
    instance, exist only in the compiled game and are not part of the level data that a frontend can
    download.
@@ -45,13 +46,17 @@ what a standard should state, is in Appendix A.
 
 ```
 frontend (any)  ──  protocol (§4), JSON-RPC over WebSocket or HTTP  ──  game server  ──  Lean
-                     levels in the level format (§3)                    (rules, sessions)
+(rules, hints,       contexts, statements, moves                        (sessions,
+ progress)                                                                warm environments)
 ```
 
 * The **level format** says what a level is. Levels can come from the frontend (it sends the level
   with `start`) or from the server (a game installed there, referred to by name).
 * The **protocol** says how a level is played. It does not care how the frontend looks.
-* The **game server** keeps Lean environments warm, runs moves in a sandbox and enforces the rules.
+* The **game server** keeps Lean environments warm and runs moves in a sandbox. It knows no game: it
+  gets a context and a statement and plays tactics.
+* The **frontend** applies the rules of the level format: it offers only allowed moves, checks typed
+  ones before it sends them, matches hints, and keeps the progress.
 
 ## 3. The level format
 
@@ -118,9 +123,12 @@ id). Methods:
 ### `game/start`
 
 ```json
-{ "level": "nng4/Tutorial/2" }                  // a level installed on the server
-{ "level": { …level object… } }                // or the level itself
+{ "base": "nng4", "context": "namespace MyNat",
+  "statement": "example (x y : ℕ) (h : y = x + 7) : 2 * y = 2 * (x + 7)" }
 ```
+
+The backend knows no levels: the frontend sends the level's `env`, `preamble` and `statement` (§3)
+as base, context and statement. (A server may offer installed levels by name for convenience.)
 
 Answer: a session, and **state 0**.
 
@@ -130,8 +138,7 @@ Answer: a session, and **state 0**.
     "goals": [ { "id": "g1", "case": null,
       "hyps": [ { "names": ["x", "y"], "type": { "text": "ℕ", "tags": [] } },
                 { "names": ["h"], "type": { "text": "y = x + 7", "tags": [ … ] } } ],
-      "target": { "text": "2 * y = 2 * (x + 7)", "tags": [ … ] },
-      "hints": [ { "text": "First execute `rw [h]` to replace the `y` with `x + 7`.", "hidden": false } ] } ],
+      "target": { "text": "2 * y = 2 * (x + 7)", "tags": [ … ] } } ],
     "solved": false } }
 ```
 
@@ -145,11 +152,12 @@ game needs them).
 { "session": "s7f3", "state": 0, "tactic": "rw [h]" }
 ```
 
-Answer: a new state (`id: 1`, with goals, hints, `solved`) or an error:
+Answer: a new state (`id: 1`, with its goals and `solved`) or an error. (That `simp` is not available
+in a level is the frontend's message; the backend does not know the level's rules.)
 
 ```json
-{ "error": { "kind": "not-allowed", "message": "The tactic `simp` is not available in this level." } }
-{ "error": { "kind": "lean", "message": "motive is not type correct …", "explanation": "…" } }
+{ "error": { "kind": "lean", "message": "motive is not type correct …" } }
+{ "error": { "kind": "limit", "message": "The move took longer than 5 s." } }
 ```
 
 States are immutable and numbered, so **Undo is free**: one continues from an earlier state. A step
@@ -181,15 +189,32 @@ goals), or the theorems and hypotheses that rewrite the subterm at `pos`. nng-ve
 guesses these from the text of the goal today; the IPM computes them itself by unification. A
 server can do it properly, but it costs a Lean run per candidate, so it should be bounded.
 
+### `game/match` (optional)
+
+For hints: whether a goal of a state matches patterns (statements with metavariables, in the
+level's context), up to the names of hypotheses and variables, and with which names for the
+placeholders; a plain Lean question, without game rules.
+
+```json
+{ "session": "s7f3", "state": 1, "goal": "g1",
+  "patterns": ["(x y : ℕ) (h : y = x + 7) : 2 * (x + 7) = 2 * (x + 7)"] }
+```
+
+Answer: `[ { "pattern": 0, "names": { "x": "x", "y": "y", "h": "h" } } ]`. A frontend can also match
+the goals as text, which is cruder but needs no request.
+
 ### `game/close`
 
 Ends the session and frees its state.
 
 ## 5. Rules and resources
 
-* **The rules are enforced by the server**: tactics and theorems outside the inventory are refused,
-  `sorry` and `admit` count as unsolved, and `solved` is only set by the server. A frontend may hide
-  what is not allowed, but must not be trusted with it.
+* **The rules are the frontend's.** The backend is only Lean: it gets a context and a statement and
+  plays moves. Which tactics and theorems a level allows, which hints it gives and when it counts as
+  solved is up to the frontend, which knows the level anyway (it offers only allowed moves in a click
+  input, and checks typed lines before it sends them). For a learning game this is enough: who
+  cheats, cheats himself. Where results count (grades, leaderboards), a server can check a finished
+  proof once more against the rules; that is a separate, optional service.
 * **Sandbox and limits**: moves run Lean code (tactics, `#eval` in a preamble), so they run in a
   sandbox with limits on time per move, memory, and sessions per client. Limits are reported in
   `game/start` (`"limits": { "msPerStep": 5000, … }`) and errors say which one was hit.
@@ -201,12 +226,14 @@ Ends the session and frees its state.
 
 ## 6. How to get there
 
-* **From lean4game**: its Lean part already has the rules (inventory, hints, disabled tactics) and
-  the info-tree walk behind `Game.getProofState`. `game/check` is that method; `game/step` needs the
-  state of a session to be kept between moves (as Pantograph does); levels as data need the level
-  commands (`Statement`, `Hint`, `NewTactic`) to be readable from JSON as well as from Lean files.
 * **From the Lean REPL / Pantograph**: they have the move-oriented interface and environments that
-  can be reused; they need the rules and the level format.
+  can be reused; they need the level format, and `game/check` and `game/match` on top. A first
+  bridge in front of the REPL, for nng4, is in `repl/` of this repository (nng-verso plays against
+  it, text and click input; one REPL process for all players).
+* **From lean4game**: the info-tree walk behind `Game.getProofState` is `game/check`; its level
+  commands (`Statement`, `Hint`, `NewTactic`) would also write the level format, so that its games
+  can be played on any backend; its rules and hint matching could become a small library for
+  frontends, or an optional check of finished proofs where results count.
 * **For frontends**: nng-verso would replace its LSP client by the four methods above (and drop the
   workaround for line numbers, Appendix A); the IPM could check its proofs and show Lean's own goals.
 

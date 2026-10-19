@@ -1,18 +1,21 @@
-"""A game backend for nng4 on the Lean REPL: the protocol of docs/game-protocol.md, in a first form.
+"""A backend for proof games on the Lean REPL: the protocol of docs/game-protocol.md, in a first form.
 
-One REPL process, started in nng4, holds the loaded game; all players share it. A level is its
-statement in the game's environment; a move is a tactic on a proof state. The rules of the level
-(the tactics and theorems of its inventory) are checked here, before Lean sees the tactic.
+The backend is only Lean: it gets a context and a statement, and plays moves (tactics) on proof
+states. The rules of a game (which tactics and theorems are allowed, hints) are the frontend's
+business. One REPL process, started in a project (here nng4), holds the base environment (here the
+whole game, `import Game`); all players share it, and contexts are kept, so that each costs once.
 
     cd nng4 && python3 -I ../repl/bridge.py [port]        (default port 8090)
 
-POST /start {"world": "Tutorial", "level": 2}            → {"session", "state": {"id", "goals", "solved"}}
+POST /start {"context": "namespace MyNat", "statement": "example (x y : ℕ) (h : y = x + 7) : 2 * y = 2 * (x + 7)"}
+            (or, for convenience, {"world": "Tutorial", "level": 2}: the level from nng4's game data)
+                                                         → {"session", "state": {"id", "goals", "solved"}}
 POST /step  {"session", "state": 0, "tactic": "rw [h]"}  → {"state": …} or {"error": {"kind", "message"}}
-POST /check {"session", "proof": "rw [h]\\nrfl"}         → the proof state as lean4game's Game.getProofState
+POST /check {"session", "proof": "rw [h]\nrfl"}         → the proof state as lean4game's Game.getProofState
                                                            gives it (steps, diagnostics, completed), so that
                                                            nng-verso's client can show it as it is
 
-Hints are not given yet. The REPL is not thread-safe: requests are answered one after another.
+The REPL is not thread-safe: requests are answered one after another.
 """
 import json, os, re, subprocess, sys, threading, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,8 +31,19 @@ class Repl:
     def __init__(self):
         self.p = subprocess.Popen(['lake', 'env', REPL], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         self.lock = threading.Lock()
-        # the whole game, in the namespace of its levels
-        self.env = self.ask({'cmd': 'import Game\nnamespace MyNat'})['env']
+        # the base: what the server keeps loaded (BASE, here the whole game)
+        self.base = self.ask({'cmd': os.environ.get('BASE', 'import Game')})['env']
+        self.contexts = {}
+
+    def context(self, code):
+        """The environment of a context (Lean code after the base), elaborated once."""
+        if code not in self.contexts:
+            r = self.ask({'cmd': code, 'env': self.base}) if code.strip() else {'env': self.base}
+            errors = [m['data'] for m in r.get('messages', []) if m.get('severity') == 'error']
+            if errors:
+                raise ValueError('the context has errors: ' + '; '.join(errors))
+            self.contexts[code] = r['env']
+        return self.contexts[code]
 
     def ask(self, obj):
         with self.lock:
@@ -47,46 +61,21 @@ class Repl:
             return json.loads(''.join(lines))
 
 
-class Level:
-    """A level of the game: its statement and its inventory, from the game data."""
-
-    def __init__(self, world, n):
-        d = json.loads((GAMEDATA / f'level__{world}__{n}.json').read_text())
-        # `theorem zero_add … := by` is already in the game: here it is an example
-        self.statement = re.sub(r'^theorem\s+\S+', 'example', d['descrFormat'].strip())
-        if not self.statement.endswith(':= by'):
-            self.statement += ' := by'
-        usable = lambda i: not i['locked'] and not i['disabled']
-        self.tactics = {i['name'] for i in d['tactics'] if usable(i)}
-        # theorems: by their short and their full name; the ones that are not (yet) allowed
-        self.theorems = {}
-        for i in d['lemmas']:
-            for name in {i['name'], i['displayName'], i['name'].split('.')[-1]}:
-                self.theorems[name] = usable(i)
-
-    def refuse(self, tactic):
-        """Why the tactic is not allowed in this level, or None."""
-        if re.search(r'\b(sorry|admit)\b', tactic):
-            return '`sorry` is not allowed.'
-        for part in re.split(r';|<;>', tactic):
-            words = part.strip().split()
-            if not words:
-                continue
-            name = words[0]
-            if name == 'repeat' and len(words) > 1:
-                name = words[1]
-            if name not in self.tactics:
-                return f'The tactic `{name}` is not available in this level.'
-        for ident in re.findall(r"[A-Za-z_][\w.']*", tactic):
-            if self.theorems.get(ident) is False:
-                return f'The theorem `{ident}` is not available in this level.'
-        return None
+def nng_level(world, n):
+    """For convenience: the context and statement of a level of nng4, from its game data."""
+    d = json.loads((GAMEDATA / f'level__{world}__{n}.json').read_text())
+    # `theorem zero_add … := by` is already in the game: here it is an example
+    statement = re.sub(r'^theorem\s+\S+', 'example', d['descrFormat'].strip())
+    return 'namespace MyNat', re.sub(r'\s*:=\s*by\s*$', '', statement)
 
 
 class Session:
-    def __init__(self, repl, level):
-        self.repl, self.level = repl, level
-        r = repl.ask({'cmd': level.statement + '\n  sorry', 'env': repl.env})
+    def __init__(self, repl, context, statement):
+        self.repl = repl
+        r = repl.ask({'cmd': statement + ' := by\n  sorry', 'env': repl.context(context)})
+        errors = [m['data'] for m in r.get('messages', []) if m.get('severity') == 'error']
+        if errors or not r.get('sorries'):
+            raise ValueError('the statement has errors: ' + '; '.join(errors))
         s = r['sorries'][0]
         self.start = {'id': s['proofState'], 'goals': [s['goal']], 'solved': False}
         self.cache = {}  # (state, tactic) → the answer, so that a proof checked again costs nothing
@@ -94,20 +83,16 @@ class Session:
     def step(self, state, tactic):
         key = (state, tactic)
         if key not in self.cache:
-            why = self.level.refuse(tactic)
-            if why:
-                self.cache[key] = {'error': {'kind': 'not-allowed', 'message': why}}
+            r = self.repl.ask({'tactic': tactic, 'proofState': state})
+            if 'message' in r and 'proofState' not in r:
+                self.cache[key] = {'error': {'kind': 'lean', 'message': r['message'].removeprefix('Lean error:\n')}}
             else:
-                r = self.repl.ask({'tactic': tactic, 'proofState': state})
-                if 'message' in r and 'proofState' not in r:
-                    self.cache[key] = {'error': {'kind': 'lean', 'message': r['message'].removeprefix('Lean error:\n')}}
+                errors = [m['data'] for m in r.get('messages', []) if m.get('severity') == 'error']
+                if errors:
+                    self.cache[key] = {'error': {'kind': 'lean', 'message': '\n'.join(errors)}}
                 else:
-                    errors = [m['data'] for m in r.get('messages', []) if m.get('severity') == 'error']
-                    if errors:
-                        self.cache[key] = {'error': {'kind': 'lean', 'message': '\n'.join(errors)}}
-                    else:
-                        self.cache[key] = {'state': {'id': r['proofState'], 'goals': r.get('goals', []),
-                                                     'solved': r.get('proofStatus') == 'Completed'}}
+                    self.cache[key] = {'state': {'id': r['proofState'], 'goals': r.get('goals', []),
+                                                 'solved': r.get('proofStatus') == 'Completed'}}
         return self.cache[key]
 
     def check(self, proof):
@@ -133,7 +118,6 @@ class Session:
 
 repl = None
 sessions = {}
-levels = {}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -160,11 +144,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             req = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
             if self.path == '/start':
-                key = (req['world'], int(req['level']))
-                if key not in levels:
-                    levels[key] = Level(*key)
+                context, statement = (req.get('context', ''), req['statement']) if 'statement' in req else nng_level(req['world'], int(req['level']))
                 sid = uuid.uuid4().hex[:12]
-                sessions[sid] = Session(repl, levels[key])
+                sessions[sid] = Session(repl, context, statement)
                 return self.answer({'session': sid, 'state': sessions[sid].start})
             s = sessions.get(req.get('session'))
             if not s:

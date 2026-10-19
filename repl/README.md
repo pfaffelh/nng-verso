@@ -47,11 +47,14 @@ the players share the loaded game, and another player costs next to nothing.
 ## A first backend: `bridge.py`
 
 `bridge.py` puts the protocol of `docs/game-protocol.md` in front of the REPL, in a first form:
-`/start`, `/step` and `/check` over HTTP (only the Python standard library). It loads the whole game
-once (`import Game`), makes a level's statement an `example`, and checks every tactic against the
-level's inventory (tactics, theorems, no `sorry`) before Lean sees it. `/check` plays a whole proof
-line by line and answers in the form of lean4game's `Game.getProofState`, so that nng-verso's client
-shows it as it is; it keeps the answers, so that a proof checked again costs nothing.
+`/start`, `/step` and `/check` over HTTP (only the Python standard library). The backend is only
+Lean: it keeps a base environment loaded (`import Game`), gets a context (here `namespace MyNat`) and
+a statement, and plays moves; contexts are elaborated once and shared. The rules of a level (its
+tactics and theorems) are the frontend's: nng-verso checks each typed line before it sends the proof
+(`refuse` in `level.js`; the page carries the allowed tactics and the locked theorems), and its click
+input offers only allowed moves. `/check` plays a whole proof line by line and answers in the form of
+lean4game's `Game.getProofState`, so that nng-verso's client shows it as it is; it keeps the answers,
+so that a proof checked again costs nothing.
 
 ```bash
 cd nng4 && python3 -I ../repl/bridge.py 8090        # then open the site with ?backend=http://127.0.0.1:8090
@@ -66,8 +69,8 @@ for proofs without `·`), several REPL processes with a time limit, cleaning up 
 
 ## What is missing for a game backend
 
-* **The rules**: the REPL knows no inventory; tactics must be checked against the level's (from the
-  level data) by a thin layer in front of it.
+* **The rules**: the frontend's (see above); a server that must be sure (grades) can check a finished
+  proof once more.
 * **Hints**: they are in the compiled game (lean4game's environment extension); to be read with a
   small Lean command and matched against the goals.
 * **Concurrency**: one REPL process answers one request after another; a few processes, and a time

@@ -358,6 +358,11 @@
         b.replaceChildren(el('span', 'nng-lemma-statement', statement))
       }
       this.tactics = [...root.querySelectorAll('.nng-tactic')].map(b => b.dataset.insert)
+      // the rules of the level, which the frontend keeps (the backend is only Lean)
+      const st = root.querySelector('.nng-statement')
+      this.statement = st?.textContent.trim() ?? ''
+      this.allowed = new Set((st?.dataset.allowed ?? '').split(',').filter(x => x))
+      this.locked = new Set((st?.dataset.locked ?? '').split(',').filter(x => x))
       this.clickBar = el('div', 'nng-clickbar')
       this.goals.after(this.clickBar)
       window.addEventListener('nng-show', ev => { if (ev.detail === this.root) this.activate() })
@@ -646,7 +651,8 @@
       if (BACKEND) {
         this.setStatus('Connecting to the REPL …', 'nng-busy')
         try {
-          const r = await post('/start', { world: this.world, level: this.level })
+          // the level's statement in the game's namespace (`theorem zero_add …` is in the game already)
+          const r = await post('/start', { context: 'namespace MyNat', statement: this.statement.replace(/^theorem\s+\S+/, 'example') })
           if (!r.session) throw new Error(r.error?.message ?? 'no session')
           this.session = r.session
           this.opened = true
@@ -685,6 +691,21 @@
       }
     }
 
+    // Why a line of the proof breaks the rules of the level (its tactics and theorems), or null.
+    refuse(line) {
+      const tactic = line.replace(/^\s*·\s*/, '').trim()
+      if (!tactic || tactic.startsWith('--')) return null
+      if (/\b(sorry|admit)\b/.test(tactic)) return '`sorry` is not allowed.'
+      if (this.allowed.size) for (const part of tactic.split(/<;>|;/)) {
+        const words = part.trim().split(/\s+/)
+        const name = words[0] === 'repeat' && words[1] ? words[1] : words[0]
+        if (name && !this.allowed.has(name)) return `The tactic \`${name}\` is not available in this level.`
+      }
+      for (const id of tactic.match(/[A-Za-z_][\w.']*/g) ?? [])
+        if (this.locked.has(id)) return `The theorem \`${id}\` is not available in this level.`
+      return null
+    }
+
     async sendChange() {
       if (activeLevel !== this || !this.opened) return this.activate()
       if (BACKEND) { this.version += 1; return this.check() }
@@ -709,10 +730,18 @@
       let state
       if (BACKEND) {
         try {
-          state = await post('/check', { session: this.session, proof: this.editor.value })
+          // Lean gets the proof up to the first line that breaks the rules of the level
+          const lines = this.editor.value.split('\n')
+          const bad = lines.findIndex(l => this.refuse(l))
+          state = await post('/check', { session: this.session, proof: (bad < 0 ? lines : lines.slice(0, bad)).join('\n') })
           if (state.error) throw new Error(state.error.message)
           // the goals come as text, as Lean prints them
           for (const st of state.steps) st.goals = st.goals.flatMap(g => parseGoals(g.goal.text))
+          if (bad >= 0 && !state.steps.some(st => st.diags.length)) {
+            state.steps.push({ line: bad + 1, goals: state.steps[state.steps.length - 1].goals, diags: [{ severity: 1,
+              range: { start: { line: bad, character: 0 }, end: { line: bad, character: lines[bad].length } }, message: { text: this.refuse(lines[bad]) } }] })
+            state.completed = false
+          }
         } catch (e) {
           this.setStatus(`Request failed: ${e.message ?? e}`, 'nng-error')
           return
@@ -987,7 +1016,7 @@
         const ex = line.match(/\b(?:exact|apply)\s+([A-Za-z_][\w.']*)/)
         if (ex) names.push(ex[1])
         for (const n of names)
-          if (n && /^[A-Za-z_]/.test(n) && !known.has(n) && !known.has(n.replace(/^MyNat\./, '')))
+          if (n && /^[A-Za-z_]/.test(n) && !known.has(n) && !known.has(n.replace(/^MyNat\./, '')) && !this.locked.has(n))  // (a locked one is said so)
             unknown.push({ line: i, name: n })
       })
       return unknown

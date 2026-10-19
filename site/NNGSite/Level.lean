@@ -68,15 +68,19 @@ block_extension Block.nngLevel (world : String) (level : Nat) where
   toTeX := none
 
 -- The statement, a palette of the available tactics and theorems, the editor and the feedback area.
-block_extension Block.nngPlay (statement : String) (tactics lemmas lemmaTypes : Array String) where
+-- `allowed`: the tactics that may be used (also hidden ones), `locked`: the theorems of the game that
+-- may not (yet); the frontend keeps to these rules (the backend is only Lean).
+block_extension Block.nngPlay (statement : String) (tactics lemmas lemmaTypes allowed locked : Array String) where
   data := Json.mkObj [("statement", statement), ("tactics", toJson tactics), ("lemmas", toJson lemmas),
-    ("lemmaTypes", toJson lemmaTypes)]
+    ("lemmaTypes", toJson lemmaTypes), ("allowed", toJson allowed), ("locked", toJson locked)]
   traverse _ _ _ := pure none
   toHtml := some fun _ _ _ data _ => do
     let statement := (data.getObjValAs? String "statement").toOption.getD ""
     let tactics := (data.getObjValAs? (Array String) "tactics").toOption.getD #[]
     let lemmas := (data.getObjValAs? (Array String) "lemmas").toOption.getD #[]
     let lemmaTypes := (data.getObjValAs? (Array String) "lemmaTypes").toOption.getD #[]
+    let allowed := (data.getObjValAs? (Array String) "allowed").toOption.getD #[]
+    let locked := (data.getObjValAs? (Array String) "locked").toOption.getD #[]
     let div (cls : String) (inner : Html := .empty) : Html := .tag "div" #[("class", cls)] inner
     -- `type` is the statement of a theorem; it decides between `rw`, `apply` and `exact`.
     let button (cls name : String) (type : String := "") : Html :=
@@ -88,7 +92,8 @@ block_extension Block.nngPlay (statement : String) (tactics lemmas lemmaTypes : 
       else div "nng-palette-group" <| .seq <|
         #[.tag "span" #[("class", "nng-palette-label")] (.text true label)] ++ buttons
     pure <| .seq #[
-      .tag "pre" #[("class", "nng-statement")] (.text true statement),
+      .tag "pre" #[("class", "nng-statement"), ("data-allowed", ",".intercalate allowed.toList),
+        ("data-locked", ",".intercalate locked.toList)] (.text true statement),
       div "nng-palette" <| .seq #[
         group "Tactics" (tactics.map (button "nng-tactic")),
         group "Theorems" ((lemmas.zip lemmaTypes).map fun (n, t) => button "nng-lemma" n t),
@@ -215,10 +220,14 @@ def level : DirectiveExpanderOf LevelConfig
     let tactics := (available (items "tactics")).map (·.displayName)
     let lemmas := (available (items "lemmas")).map (·.displayName)
     let lemmaTypes := (available (items "lemmas")).map (·.altTitle)
+    let usable (i : Item) := !i.locked && !i.disabled
+    let allowed := ((items "tactics").filter usable).map (·.name)
+    -- (by the short and the full name)
+    let locked := ((items "lemmas").filter (!usable ·)).flatMap fun i => #[i.displayName, i.name]
     let conclusion ← markdownBlocks (str "conclusion")
     -- Strip the trailing `:= by` from the statement as shown in lean4game.
     let statement := ":=".intercalate ((str "descrFormat").splitOn ":=").dropLast |>.trimAsciiEnd.copy
-    let play ← ``(Verso.Doc.Block.other (Block.nngPlay $(quote statement) $(quote tactics) $(quote lemmas) $(quote lemmaTypes)) #[])
+    let play ← ``(Verso.Doc.Block.other (Block.nngPlay $(quote statement) $(quote tactics) $(quote lemmas) $(quote lemmaTypes) $(quote allowed) $(quote locked)) #[])
     let concl ← ``(Verso.Doc.Block.other Block.nngConclusion #[$conclusion,*])
     let all := intro ++ extra ++ descr ++ inventory ++ #[play, concl]
     ``(Verso.Doc.Block.other (Block.nngLevel $(quote cfg.world) $(quote cfg.level)) #[$all,*])
