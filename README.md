@@ -25,7 +25,8 @@ site/        the Verso project (Lean v4.35.0)
                          time, dots, the switch between text and click input)
   scripts/gen_worlds.py  generates NNGSite/Worlds/*.lean from the game data
 deploy/      patch for the relay used on the public demo server
-docs/        design notes (genre.md: a Verso genre for Lean games; click-game.md: NNG by tapping)
+docs/        design notes (genre.md: a Verso genre for Lean games; click-game.md: NNG by tapping;
+             game-protocol.md: a standard between Lean and the frontends of proof games)
 tests/       protocol and end-to-end tests
 ```
 
