@@ -15,14 +15,20 @@ POST /check {"session", "proof": "rw [h]\nrfl"}         → the proof state as l
                                                            gives it (steps, diagnostics, completed), so that
                                                            nng-verso's client can show it as it is
 
+With ALLOWED=<file> (a SHA-256 of a context per line), only these contexts are accepted; the hash
+of the NNG context: `printf 'namespace MyNat' | sha256sum`.
+
 The REPL is not thread-safe: requests are answered one after another.
 """
-import json, os, re, subprocess, sys, threading, uuid
+import hashlib, json, os, re, subprocess, sys, threading, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 REPL = os.path.expanduser(os.environ.get('REPL', '~/Code/lean/repl-v4.23/.lake/build/bin/repl'))
 GAMEDATA = Path('.lake/gamedata')
+# the contexts this server accepts (SHA-256 of their text, one per line); without the file, any
+ALLOWED = ({l.split()[0] for l in Path(os.environ['ALLOWED']).read_text().splitlines() if l.strip() and not l.startswith('#')}
+           if os.environ.get('ALLOWED') else None)
 
 
 class Repl:
@@ -36,7 +42,10 @@ class Repl:
         self.contexts = {}
 
     def context(self, code):
-        """The environment of a context (Lean code after the base), elaborated once."""
+        """The environment of a context (Lean code after the base), elaborated once. With a file
+        ALLOWED (one SHA-256 of a context per line), only the contexts listed there are accepted."""
+        if ALLOWED is not None and hashlib.sha256(code.encode()).hexdigest() not in ALLOWED:
+            raise PermissionError('this server does not accept this context')
         if code not in self.contexts:
             r = self.ask({'cmd': code, 'env': self.base}) if code.strip() else {'env': self.base}
             errors = [m['data'] for m in r.get('messages', []) if m.get('severity') == 'error']
@@ -156,6 +165,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/check':
                 return self.answer(s.check(req.get('proof', '')))
             self.answer({'error': {'kind': 'path', 'message': self.path}}, 404)
+        except PermissionError as e:
+            self.answer({'error': {'kind': 'context', 'message': str(e)}}, 403)
         except Exception as e:  # a request that cannot be answered must not end the server
             self.answer({'error': {'kind': 'server', 'message': f'{type(e).__name__}: {e}'}}, 500)
 

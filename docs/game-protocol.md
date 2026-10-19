@@ -215,6 +215,19 @@ Ends the session and frees its state.
   input, and checks typed lines before it sends them). For a learning game this is enough: who
   cheats, cheats himself. Where results count (grades, leaderboards), a server can check a finished
   proof once more against the rules; that is a separate, optional service.
+* **Contexts by their content**: the server knows no games; it keeps every context it has elaborated
+  under a hash of its text, and the players of a game, who send the same context, share it. A
+  frontend may send the hash first and the text only when the server asks for it (`"context":
+  {"sha256": "…"}`).
+* **Which contexts a server accepts** is the operator's choice:
+  1. *open*: any context, with strict limits per move and per client (development, small servers);
+  2. *open, with known contexts first*: known contexts get generous limits, unknown ones very tight
+     ones, so that a new game can be tried at once and abuse does not pay;
+  3. *known contexts only*: a list of hashes (a game is announced once: no build, no restart), for
+     much-used services. Stricter still: a list of pairs of context and statement (the levels).
+  A context may contain code that runs when it is elaborated (`#eval`), so an operator looks at what
+  he lets in; and even in a known context anybody can send expensive statements and tactics, so the
+  limits below stay.
 * **Sandbox and limits**: moves run Lean code (tactics, `#eval` in a preamble), so they run in a
   sandbox with limits on time per move, memory, and sessions per client. Limits are reported in
   `game/start` (`"limits": { "msPerStep": 5000, … }`) and errors say which one was hit.
