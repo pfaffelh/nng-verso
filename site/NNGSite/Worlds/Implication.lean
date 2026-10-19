@@ -6,6 +6,10 @@ open NNGSite
 
 #doc (Manual) "Implication World" =>
 
+%%%
+htmlSplit := .never
+%%%
+
 :::worldIntro "Implication"
 :::
 

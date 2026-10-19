@@ -284,6 +284,32 @@
     intro: 'intro |', use: 'use |', have: 'have h : | := ', contrapose: 'contrapose! |',
   }
 
+  // ---------------------------------------------------------------- click input
+
+  // The click input (`nng-click` on the root element, switched by `nav.js`): the proof is played
+  // with buttons only. Each button adds a finished line to the proof (the text input stays the
+  // proof), and Lean checks it. Below the current goal: the tactics that fit its shape, "⋯" for
+  // tactics without arguments, and a menu of the theorems (as the blocks in the Proof Machine).
+  const clickMode = () => document.documentElement.classList.contains('nng-click')
+  // `a = b` split at its top-level `=` (or `≠`), else null
+  function splitTop(t, op) {
+    let depth = 0
+    for (let i = 0; i < t.length; i++) {
+      if ('([{'.includes(t[i])) depth++
+      else if (')]}'.includes(t[i])) depth--
+      else if (depth === 0 && t.startsWith(op, i)) return [t.slice(0, i).trim(), t.slice(i + op.length).trim()]
+    }
+    return null
+  }
+  // whether the term `x` occurs in `t` (not as part of a longer name)
+  const contains = (t, x) => {
+    if (!x) return false
+    const quoted = x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(^|[^\\w'])${quoted}($|[^\\w'])`).test(t)
+  }
+  // tactics without arguments, which may be tried on any goal (behind "⋯")
+  const bareTactics = ['simp', 'decide', 'tauto', 'trivial', 'symm', 'left', 'right', 'constructor', 'exfalso', 'contradiction', 'omega', 'linarith', 'norm_num', 'ring', 'simp_add']
+
   // ---------------------------------------------------------------- one level
 
   class Level {
@@ -316,6 +342,11 @@
         b.title = `${b.dataset.insert} :${b.dataset.type.slice(b.dataset.type.lastIndexOf(' : ') + 2)}`
         b.replaceChildren(el('span', 'nng-lemma-statement', statement))
       }
+      this.tactics = [...root.querySelectorAll('.nng-tactic')].map(b => b.dataset.insert)
+      this.clickBar = el('div', 'nng-clickbar')
+      this.goals.after(this.clickBar)
+      window.addEventListener('nng-show', ev => { if (ev.detail === this.root) this.activate() })
+      window.addEventListener('nng-mode', () => this.renderState())
       this.undoStack = []
       this.lastTyped = 0
       this.lastEditWasDelete = false
@@ -920,7 +951,8 @@
     renderState() {
       const state = this.lastState
       if (!state || activeLevel !== this) return
-      const cursorLine = this.editor.value.slice(0, this.editor.selectionStart).split('\n').length - 1
+      const cursorLine = clickMode() ? this.editor.value.split('\n').length - 1
+        : this.editor.value.slice(0, this.editor.selectionStart).split('\n').length - 1
       const steps = state.steps
       // `steps[k].line` is one past the proof line that produced it; step 0 is the initial goal.
       let k = 0
@@ -959,6 +991,7 @@
         })
       }
 
+      this.renderClickBar(state.completed ? null : step.goals[0]?.goal)
       this.hints.replaceChildren()
       for (const h of step.goals[0]?.hints ?? []) {
         const box = el('div', 'nng-hint' + (h.hidden ? ' nng-hidden-hint' : ''))
@@ -1003,6 +1036,123 @@
             'You can click the available theorems and hypotheses.'))
     }
 
+    // ------------------------------------------------------------ click input
+
+    // Adds a finished line to the proof and lets Lean check it.
+    playLine(cmd) {
+      this.pushUndo()
+      const v = this.editor.value.replace(/\s*$/, '')
+      this.editor.value = (v ? v + '\n' : '') + cmd + '\n'
+      this.save({ code: this.editor.value })
+      this.sendChange()
+    }
+
+    // The last line of the proof taken back.
+    unplayLine() {
+      const lines = this.editor.value.replace(/\s*$/, '').split('\n')
+      lines.pop()
+      this.pushUndo()
+      this.editor.value = lines.length ? lines.join('\n') + '\n' : ''
+      this.save({ code: this.editor.value })
+      this.sendChange()
+    }
+
+    // What fits the goal `g`: [command, title] for the buttons below it.
+    suggest(g) {
+      const has = t => this.tactics.some(x => x === t || x.startsWith(t + ' '))
+      const target = taggedText(g.type).trim()
+      const hyps = g.hyps.flatMap(h => h.names.map(n => ({ n, t: taggedText(h.type).trim() })))
+      const out = [], add = (cmd, why) => { if (!out.some(o => o[0] === cmd)) out.push([cmd, why]) }
+      const eq = splitTop(target, ' = ')
+      if (eq && has('rfl')) add('rfl', 'both sides are the same')
+      for (const h of hyps) if (h.t === target && has('exact')) add(`exact ${h.n}`, `${h.n} is the goal`)
+      if ((target.includes('→') || target.startsWith('¬') || target.includes('≠')) && has('intro')) {
+        const names = new Set(hyps.map(h => h.n))
+        let k = 1
+        while (names.has(`h${k}`) || (k === 1 && names.has('h'))) k++
+        add(`intro ${names.has('h') ? `h${k}` : 'h'}`, 'assume the premise')
+      }
+      for (const h of hyps) {
+        const e = splitTop(h.t, ' = ')
+        if (!e || !has('rw')) continue
+        if (contains(target, e[0])) add(`rw [${h.n}]`, `${e[0]} → ${e[1]}`)
+        if (contains(target, e[1])) add(`rw [← ${h.n}]`, `${e[1]} → ${e[0]}`)
+      }
+      for (const h of hyps) {
+        const imp = splitTop(h.t, ' → ')
+        if (imp && imp[1] === target && has('apply')) add(`apply ${h.n}`, `${h.n} gives the goal`)
+      }
+      if (has('induction'))
+        for (const h of hyps) if (h.t === 'ℕ' && contains(target, h.n)) add(`induction ${h.n} with d hd`, `${h.n} = 0, and ${h.n} = succ d`)
+      return out
+    }
+
+    renderClickBar(g) {
+      const bar = this.clickBar
+      bar.replaceChildren()
+      if (!clickMode()) return
+      const button = (cmd, title, cls = 'nng-click-tactic') => {
+        const b = el('button', cls)
+        b.type = 'button'
+        b.append(el('code', null, cmd))
+        if (title) b.title = title
+        b.addEventListener('click', () => this.playLine(cmd))
+        return b
+      }
+      if (g) {
+        const row = el('div', 'nng-click-row')
+        for (const [cmd, why] of this.suggest(g)) row.append(button(cmd, why))
+        const bare = bareTactics.filter(t => this.tactics.includes(t))
+        if (bare.length) {
+          const more = el('button', 'nng-click-more', '⋯')
+          more.type = 'button'
+          more.title = 'More tactics'
+          const extra = el('div', 'nng-click-extra')
+          extra.hidden = true
+          for (const t of bare) extra.append(button(t, ''))
+          more.addEventListener('click', () => { extra.hidden = !extra.hidden })
+          row.append(more)
+          bar.append(row, extra)
+        } else bar.append(row)
+        // the theorems: a menu of cards, as the blocks in the Proof Machine
+        if (this.lemmas.size) {
+          const open = el('button', 'nng-click-lemmas', '＋ Theorems')
+          open.type = 'button'
+          const menu = el('div', 'nng-lemma-menu')
+          menu.hidden = !this.lemmaMenuOpen
+          open.addEventListener('click', () => { this.lemmaMenuOpen = menu.hidden; menu.hidden = !menu.hidden })
+          for (const [name, type] of this.lemmaTypes) {
+            const statement = conclusionOf(type)
+            const card = el('div', 'nng-lemma-card')
+            card.append(el('div', 'nng-lemma-card-statement', statement), el('div', 'nng-lemma-card-name', name))
+            const acts = el('div', 'nng-lemma-card-acts')
+            const e = splitTop(statement, ' = ')
+            const uses = e ? [`rw [${name}]`, `rw [← ${name}]`] : splitTop(statement, ' → ') ? [`apply ${name}`] : [`exact ${name}`]
+            for (const u of uses) if (this.tactics.some(t => u.startsWith(t))) acts.append(button(u, ''))
+            if (!acts.childElementCount) continue
+            card.append(acts)
+            menu.append(card)
+          }
+          bar.append(open, menu)
+        }
+      }
+      // the proof as played, with Undo and Start over
+      const lines = this.editor.value.split('\n').filter(l => l.trim())
+      const script = el('div', 'nng-script')
+      script.append(el('div', 'nng-script-head', 'Your proof'))
+      const code = el('pre', 'nng-script-code', lines.length ? lines.join('\n') : '(nothing yet)')
+      const back = el('button', 'nng-click-undo', '↶ Undo')
+      back.type = 'button'
+      back.disabled = !lines.length
+      back.addEventListener('click', () => this.unplayLine())
+      const fresh = el('button', 'nng-click-undo', '⟲ Start over')
+      fresh.type = 'button'
+      fresh.disabled = !lines.length
+      fresh.addEventListener('click', () => { this.pushUndo(); this.editor.value = ''; this.save({ code: '' }); this.sendChange() })
+      script.append(code, back, fresh)
+      bar.append(script)
+    }
+
     renderMessage(sev, line, leanText, ownText) {
       const m = el('div', `nng-msg nng-${sev}`)
       const head = el('div', 'nng-msg-head')
@@ -1039,6 +1189,8 @@
   function init() {
     const levels = [...document.querySelectorAll('.nng-level')].map(root => new Level(root))
     initSteps(levels)
+    // a world page shows one level at a time (nav.js): that one talks to Lean at once
+    if (document.documentElement.classList.contains('nng-staged')) levels.find(l => l.root.offsetParent !== null)?.activate()
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init)

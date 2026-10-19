@@ -21,6 +21,8 @@ site/        the Verso project (Lean v4.35.0)
   NNGSite/I18n.lean      translations with the game's catalogue (off: `language := "en"`)
   NNGSite/level.js       browser client: WebSocket + LSP to the relay, goals, hints, editing help
   NNGSite/worldmap.js    colours the map from the progress in localStorage
+  NNGSite/nav.js         the map in the table of contents; a world page as a stage (one level at a
+                         time, dots, the switch between text and click input)
   scripts/gen_worlds.py  generates NNGSite/Worlds/*.lean from the game data
 deploy/      patch for the relay used on the public demo server
 docs/        design notes (genre.md: a Verso genre for Lean games; click-game.md: NNG by tapping)
@@ -65,6 +67,17 @@ NNG_RELAY_URL=/websocket/g/verso/nng4 lake exe nng-site --output _deploy
   `didOpen` and shifts line numbers.
 * Feedback comes from the RPC method `Game.getProofState` (goals after each line, hints,
   diagnostics, `completed`). Progress (code, solved) is stored in `localStorage`.
+
+## Click input
+
+A world page shows one level at a time, as in the Incredible Proof Machine in Lean: the table of
+contents is a map of the worlds (with their dependencies and the levels solved), and above the level
+on the right are a dot per level and the switch **Text | Click**. With click input there is no text:
+below the current goal come the tactics that fit its shape (`rfl`, `exact h`, `rw [h]`, `rw [← h]`,
+`intro h`, `apply h`, `induction n with d hd`), “⋯” for tactics without arguments, and
+“＋ Theorems”, a menu of cards (statement, name, `rw`/`rw ←`/`apply`/`exact`). Each button adds a
+finished line to the proof, which Lean checks; the proof as played is shown with Undo and Start
+over. Both inputs edit the same proof.
 
 ## Help for beginners
 

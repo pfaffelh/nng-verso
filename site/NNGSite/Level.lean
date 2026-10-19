@@ -23,6 +23,9 @@ def gameDataDir : System.FilePath := ".." / "nng4" / ".lake" / "gamedata"
 
 def levelJs : String := include_str "level.js"
 def levelCss : String := include_str "level.css"
+/-- The map of the worlds in the table of contents, and the stage of a world page. -/
+def navJs : String := include_str "nav.js"
+def navCss : String := include_str "nav.css"
 /-- Translations for the hints, which the server sends in English. -/
 def hintCatalogue : String := include_str "../../nng4/.i18n/de/Game.json"
 
@@ -116,12 +119,18 @@ block_extension Block.nngConclusion where
   toTeX := none
 
 -- The introduction of a world; records the world's page for the world map.
-block_extension Block.nngWorld (world : String) where
-  data := Json.str world
+block_extension Block.nngWorld (world : String) (map : String) where
+  data := Json.mkObj [("world", world), ("map", map)]
   traverse _ data _ := do
-    registerPage (data.getStr?.toOption.getD "")
+    registerPage ((data.getObjValAs? String "world").toOption.getD "")
     pure none
-  toHtml := some fun _ goB _ _ content => content.mapM goB
+  extraJs := {JS.mk navJs}
+  extraCss := {CSS.mk navCss}
+  -- (the worlds of the game, for the map in the table of contents, which `nav.js` draws)
+  toHtml := some fun _ goB _ data content => do
+    let map := (data.getObjValAs? String "map").toOption.getD "[]"
+    pure <| .tag "div" #[("class", "nng-world"), ("data-world", (data.getObjValAs? String "world").toOption.getD ""),
+      ("data-map", map)] (← content.mapM goB)
   toTeX := none
 
 -- A collapsible section.
@@ -214,6 +223,64 @@ def level : DirectiveExpanderOf LevelConfig
     let all := intro ++ extra ++ descr ++ inventory ++ #[play, concl]
     ``(Verso.Doc.Block.other (Block.nngLevel $(quote cfg.world) $(quote cfg.level)) #[$all,*])
 
+
+/-! The worlds of the game, for the world maps (the big one and the one in the table of contents). -/
+
+structure MapWorld where
+  world : String
+  title : String
+  size : Nat
+  preds : Array String
+  x : Float := 0
+  y : Float := 0
+deriving ToJson, FromJson, Inhabited
+
+def layerDistance : Float := 250
+def worldDistance : Float := 250
+
+/--
+Layered layout: a world's layer is the length of the longest dependency path leading to it.
+Within a layer, worlds are ordered by the mean position of their predecessors.
+-/
+def layoutWorlds (worlds : Array MapWorld) : Array MapWorld := Id.run do
+  let mut layer : Std.HashMap String Nat := {}
+  for _ in worlds do
+    for w in worlds do
+      let l := w.preds.foldl (fun acc p => max acc ((layer.getD p 0) + 1)) 0
+      layer := layer.insert w.world l
+  let depth := worlds.foldl (fun acc w => max acc (layer.getD w.world 0)) 0
+  let mut xs : Std.HashMap String Float := {}
+  let mut result := #[]
+  for l in [0:depth + 1] do
+    let inLayer := worlds.filter (layer.getD ·.world 0 == l)
+    let key (w : MapWorld) : Float :=
+      if w.preds.isEmpty then 0
+      else w.preds.foldl (fun acc p => acc + xs.getD p 0) 0 / w.preds.size.toFloat
+    let sorted := inLayer.insertionSort fun a b => key a < key b
+    let k := sorted.size.toFloat
+    for h : i in [0:sorted.size] do
+      let w := sorted[i]
+      let x := (i.toFloat - (k - 1) / 2) * worldDistance
+      xs := xs.insert w.world x
+      result := result.push { w with x, y := l.toFloat * layerDistance }
+  return result
+
+/-- The worlds of the game with their dependencies, laid out in layers. -/
+def gameWorlds : DocElabM (Array MapWorld) := do
+  let game ← readGameData "game.json"
+  let some (.obj nodes) := (game.getObjVal? "worlds" >>= (·.getObjVal? "nodes")).toOption
+    | throwError "No worlds in game data"
+  let edges : Array (Array String) :=
+    (game.getObjVal? "worlds" >>= (·.getObjValAs? (Array (Array String)) "edges")).toOption.getD #[]
+  let catalogue ← loadTranslations
+  let worlds := nodes.toArray.map fun (name, node) => {
+    world := name
+    title := translate catalogue <| (node.getObjValAs? String "title").toOption.getD name
+    size := (game.getObjVal? "worldSize" >>= (·.getObjValAs? Nat name)).toOption.getD 0
+    preds := edges.filterMap fun e => if e[1]? == some name then e[0]? else none
+    : MapWorld }
+  return layoutWorlds worlds
+
 structure WorldConfig where
   world : String
 
@@ -229,6 +296,7 @@ def worldIntro : DirectiveExpanderOf WorldConfig
         >>= (·.getObjVal? cfg.world) >>= (·.getObjValAs? String "introduction")).toOption
       | throwError "World {cfg.world} not found in game data"
     let blocks ← markdownBlocks intro
-    ``(Verso.Doc.Block.other (Block.nngWorld $(quote cfg.world)) #[$blocks,*])
+    let map := (toJson (← gameWorlds)).compress
+    ``(Verso.Doc.Block.other (Block.nngWorld $(quote cfg.world) $(quote map)) #[$blocks,*])
 
 end NNGSite

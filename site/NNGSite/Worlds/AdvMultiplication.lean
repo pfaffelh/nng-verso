@@ -6,6 +6,10 @@ open NNGSite
 
 #doc (Manual) "Advanced Multiplication World" =>
 
+%%%
+htmlSplit := .never
+%%%
+
 :::worldIntro "AdvMultiplication"
 :::
 

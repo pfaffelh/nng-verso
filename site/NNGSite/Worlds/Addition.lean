@@ -6,6 +6,10 @@ open NNGSite
 
 #doc (Manual) "Addition World" =>
 
+%%%
+htmlSplit := .never
+%%%
+
 :::worldIntro "Addition"
 :::
 

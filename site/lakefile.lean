@@ -12,6 +12,12 @@ input_file levelJs where
 input_file levelCss where
   path := "NNGSite/level.css"
 
+input_file navJs where
+  path := "NNGSite/nav.js"
+
+input_file navCss where
+  path := "NNGSite/nav.css"
+
 input_file worldMapJs where
   path := "NNGSite/worldmap.js"
 
@@ -23,7 +29,7 @@ input_file translations where
 
 lean_lib NNGSite where
   roots := #[`NNGSite]
-  needs := #[levelJs, levelCss, worldMapJs, worldMapCss, translations]
+  needs := #[levelJs, levelCss, navJs, navCss, worldMapJs, worldMapCss, translations]
 
 @[default_target]
 lean_exe «nng-site» where

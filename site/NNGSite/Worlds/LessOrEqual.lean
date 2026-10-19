@@ -6,6 +6,10 @@ open NNGSite
 
 #doc (Manual) "≤ World" =>
 
+%%%
+htmlSplit := .never
+%%%
+
 :::worldIntro "LessOrEqual"
 :::
 

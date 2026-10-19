@@ -6,6 +6,10 @@ open NNGSite
 
 #doc (Manual) "Algorithm World" =>
 
+%%%
+htmlSplit := .never
+%%%
+
 :::worldIntro "Algorithm"
 :::
 

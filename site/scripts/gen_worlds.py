@@ -69,6 +69,11 @@ for w in order:
         '',
         f'#doc (Manual) "{translate(nodes[w]["title"])}" =>',
         '',
+        # all levels of a world on one page, where level.js shows them one at a time
+        '%%%',
+        'htmlSplit := .never',
+        '%%%',
+        '',
         f':::worldIntro "{w}"',
         ':::',
     ]

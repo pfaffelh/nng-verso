@@ -20,21 +20,11 @@ namespace NNGSite
 def worldMapJs : String := include_str "worldmap.js"
 def worldMapCss : String := include_str "worldmap.css"
 
-structure MapWorld where
-  world : String
-  title : String
-  size : Nat
-  preds : Array String
-  x : Float := 0
-  y : Float := 0
-deriving ToJson, FromJson, Inhabited
 
 /-! Geometry, following lean4game's `world_tree.tsx`. -/
 
 /-- Radius of a level circle. -/
 def levelRadius : Float := 16
-def layerDistance : Float := 250
-def worldDistance : Float := 250
 
 def piF : Float := 3.141592653589793
 
@@ -50,32 +40,6 @@ def levelPos (w : MapWorld) (i : Nat) : Float × Float :=
   let β := levelAngle w.size * i.toFloat
   (w.x + Float.sin β * levelOrbit w.size, w.y - Float.cos β * levelOrbit w.size)
 
-/--
-Layered layout: a world's layer is the length of the longest dependency path leading to it.
-Within a layer, worlds are ordered by the mean position of their predecessors.
--/
-def layoutWorlds (worlds : Array MapWorld) : Array MapWorld := Id.run do
-  let mut layer : Std.HashMap String Nat := {}
-  for _ in worlds do
-    for w in worlds do
-      let l := w.preds.foldl (fun acc p => max acc ((layer.getD p 0) + 1)) 0
-      layer := layer.insert w.world l
-  let depth := worlds.foldl (fun acc w => max acc (layer.getD w.world 0)) 0
-  let mut xs : Std.HashMap String Float := {}
-  let mut result := #[]
-  for l in [0:depth + 1] do
-    let inLayer := worlds.filter (layer.getD ·.world 0 == l)
-    let key (w : MapWorld) : Float :=
-      if w.preds.isEmpty then 0
-      else w.preds.foldl (fun acc p => acc + xs.getD p 0) 0 / w.preds.size.toFloat
-    let sorted := inLayer.insertionSort fun a b => key a < key b
-    let k := sorted.size.toFloat
-    for h : i in [0:sorted.size] do
-      let w := sorted[i]
-      let x := (i.toFloat - (k - 1) / 2) * worldDistance
-      xs := xs.insert w.world x
-      result := result.push { w with x, y := l.toFloat * layerDistance }
-  return result
 
 def fmt (x : Float) : String :=
   let r := x.round
@@ -129,7 +93,7 @@ def renderMap (worlds : Array MapWorld) (links : Json) : Html := Id.run do
       .seq levels
     ]
   let viewBox := s!"{fmt minX} {fmt minY} {fmt (maxX - minX)} {fmt (maxY - minY)}"
-  .tag "div" #[("class", "nng-map")] <|
+  .tag "div" #[("class", "nng-map"), ("data-map", (toJson worlds).compress)] <|
     .tag "svg" #[("viewBox", viewBox), ("xmlns", "http://www.w3.org/2000/svg"),
       ("style", s!"max-width: {fmt ((maxX - minX) * 0.8)}px")]
       (.seq (edges ++ groups))
@@ -142,8 +106,8 @@ block_extension Block.nngWorldMap (layout : String) (links : Json) where
     let new := pageLinks (← get)
     if old.compress == new.compress then pure none
     else pure <| some <| .other (Block.nngWorldMap layout new) contents
-  extraJs := {JS.mk worldMapJs}
-  extraCss := {CSS.mk worldMapCss}
+  extraJs := {JS.mk worldMapJs, JS.mk navJs}
+  extraCss := {CSS.mk worldMapCss, CSS.mk navCss}
   toHtml := some fun _ _ _ data _ => do
     let layout := (data.getObjValAs? String "layout").toOption.getD "[]"
     let links := (data.getObjVal? "links").toOption.getD (Json.mkObj [])
@@ -155,19 +119,7 @@ block_extension Block.nngWorldMap (layout : String) (links : Json) where
 @[directive]
 def worldMap : DirectiveExpanderOf Unit
   | (), _ => do
-    let game ← readGameData "game.json"
-    let some nodes := (game.getObjVal? "worlds" >>= (·.getObjVal? "nodes")).toOption
-      | throwError "No worlds in game data"
-    let edges : Array (Array String) :=
-      (game.getObjVal? "worlds" >>= (·.getObjValAs? (Array (Array String)) "edges")).toOption.getD #[]
-    let some (.obj nodes) := some nodes | throwError "Unexpected world data"
-    let catalogue ← loadTranslations
-    let worlds := nodes.toArray.map fun (name, node) => {
-      world := name
-      title := translate catalogue <| (node.getObjValAs? String "title").toOption.getD name
-      size := (game.getObjVal? "worldSize" >>= (·.getObjValAs? Nat name)).toOption.getD 0
-      preds := edges.filterMap fun e => if e[1]? == some name then e[0]? else none
-      : MapWorld }
+    let worlds ← gameWorlds
     let layout := (toJson (layoutWorlds worlds)).compress
     ``(Verso.Doc.Block.other (Block.nngWorldMap $(quote layout) (Lean.Json.mkObj [])) #[])
 
