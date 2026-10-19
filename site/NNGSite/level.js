@@ -24,6 +24,21 @@
     return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${url}`
   }
 
+  // A game backend on the Lean REPL instead of lean4game's server (repl/bridge.py): with
+  // `?backend=http://127.0.0.1:8090` in the address (kept; `?backend=` switches back). It answers
+  // `/start` and `/check` over HTTP, `/check` in the form of `Game.getProofState`.
+  const BACKEND = (() => {
+    try {
+      const q = new URLSearchParams(location.search).get('backend')
+      if (q !== null) { if (q) localStorage.setItem('nng-verso:backend', q); else localStorage.removeItem('nng-verso:backend') }
+      return localStorage.getItem('nng-verso:backend')
+    } catch { return null }
+  })()
+  const post = async (path, body) => {
+    const r = await fetch(BACKEND.replace(/\/$/, '') + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    return r.json()
+  }
+
   // ---------------------------------------------------------------- connection
 
   class Connection {
@@ -628,6 +643,19 @@
       if (activeLevel === this) return
       const previous = activeLevel
       activeLevel = this
+      if (BACKEND) {
+        this.setStatus('Connecting to the REPL …', 'nng-busy')
+        try {
+          const r = await post('/start', { world: this.world, level: this.level })
+          if (!r.session) throw new Error(r.error?.message ?? 'no session')
+          this.session = r.session
+          this.opened = true
+          return this.check()
+        } catch (e) {
+          activeLevel = null
+          return this.setStatus(`No connection to the REPL backend (${e.message ?? e}).`, 'nng-error')
+        }
+      }
       this.setStatus('Connecting to Lean …', 'nng-busy')
       try {
         const conn = await getConnection()
@@ -659,6 +687,7 @@
 
     async sendChange() {
       if (activeLevel !== this || !this.opened) return this.activate()
+      if (BACKEND) { this.version += 1; return this.check() }
       const conn = await getConnection()
       // The relay prepends a header to the document on `didOpen` and shifts all line numbers,
       // so changes must replace a range of the proof instead of the whole document.
@@ -674,11 +703,23 @@
     }
 
     async check() {
-      const conn = await getConnection()
       const version = this.version
       this.setStatus('Lean is checking …', 'nng-busy')
       const pos = { line: 0, character: 0 }
       let state
+      if (BACKEND) {
+        try {
+          state = await post('/check', { session: this.session, proof: this.editor.value })
+          if (state.error) throw new Error(state.error.message)
+          // the goals come as text, as Lean prints them
+          for (const st of state.steps) st.goals = st.goals.flatMap(g => parseGoals(g.goal.text))
+        } catch (e) {
+          this.setStatus(`Request failed: ${e.message ?? e}`, 'nng-error')
+          return
+        }
+        return this.received(state, version)
+      }
+      const conn = await getConnection()
       try {
         state = await conn.request('$/lean/rpc/call', {
           method: 'Game.getProofState', sessionId: this.sessionId,
@@ -689,6 +730,10 @@
         this.setStatus(`Request failed: ${e.message ?? JSON.stringify(e)}`, 'nng-error')
         return
       }
+      this.received(state, version)
+    }
+
+    received(state, version) {
       if (version !== this.version || !state) return // outdated answer
       this.lastState = state
       if (state.completed) {
@@ -885,6 +930,7 @@
 
     // The goals at the end of line `line`, from the server (with subterm positions), or null.
     async fetchGoalsAt(line) {
+      if (BACKEND) return  // (the REPL gives goals as text only)
       const text = this.editor.value.split('\n')[line] ?? ''
       const key = `${this.version}:${line}`
       if (this.goalsAt?.key === key) return

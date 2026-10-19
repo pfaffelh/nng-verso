@@ -44,6 +44,26 @@ and play `rw [h]`, `rfl`.
 lean4game starts a Lean process per player (about 1.7 GB each on our test server). With the REPL
 the players share the loaded game, and another player costs next to nothing.
 
+## A first backend: `bridge.py`
+
+`bridge.py` puts the protocol of `docs/game-protocol.md` in front of the REPL, in a first form:
+`/start`, `/step` and `/check` over HTTP (only the Python standard library). It loads the whole game
+once (`import Game`), makes a level's statement an `example`, and checks every tactic against the
+level's inventory (tactics, theorems, no `sorry`) before Lean sees it. `/check` plays a whole proof
+line by line and answers in the form of lean4game's `Game.getProofState`, so that nng-verso's client
+shows it as it is; it keeps the answers, so that a proof checked again costs nothing.
+
+```bash
+cd nng4 && python3 -I ../repl/bridge.py 8090        # then open the site with ?backend=http://127.0.0.1:8090
+```
+
+The site remembers the backend (`?backend=` switches back to the Lean Game Server of the HHU). With
+it, the Tutorial and Addition levels play in text and click input without any connection to the HHU;
+a move takes about 0.1 s in the browser.
+
+Still missing in the bridge: hints, `·` blocks (a line is a move on the first goal, which is the same
+for proofs without `·`), several REPL processes with a time limit, cleaning up of states.
+
 ## What is missing for a game backend
 
 * **The rules**: the REPL knows no inventory; tactics must be checked against the level's (from the
