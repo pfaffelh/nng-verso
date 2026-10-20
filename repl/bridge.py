@@ -20,7 +20,7 @@ of the NNG context: `printf 'namespace MyNat' | sha256sum`.
 
 The REPL is not thread-safe: requests are answered one after another.
 """
-import hashlib, json, os, re, subprocess, sys, threading, uuid
+import hashlib, json, os, re, subprocess, sys, threading, time, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -144,6 +144,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def answer(self, obj, code=200):
+        # one line per request: when, what, the outcome, how long
+        outcome = obj.get('error', {}).get('message', '')[:60] if 'error' in obj else 'solved' if obj.get('completed') or obj.get('state', {}).get('solved') else 'ok'
+        print(f"{time.strftime('%H:%M:%S')} {self.client_address[0]} {getattr(self, 'what', self.path)} → {outcome} ({(time.time() - getattr(self, 't0', time.time())) * 1000:.0f} ms)", flush=True)
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.cors()
@@ -153,8 +156,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        self.t0, self.what = time.time(), self.path
         try:
             req = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
+            self.what = f"{self.path} {req.get('statement', '')[:50] or (req.get('tactic') or (req.get('proof') or '').strip().replace(chr(10), '; '))[:60]}"
+
             if self.path == '/start':
                 context, statement = (req.get('context', ''), req['statement']) if 'statement' in req else nng_level(req['world'], int(req['level']))
                 sid = uuid.uuid4().hex[:12]
