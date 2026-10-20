@@ -134,6 +134,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        # (a page on the web may then ask a bridge on 127.0.0.1, e.g. through an SSH tunnel: Chrome's
+        # Private Network Access)
+        self.send_header('Access-Control-Allow-Private-Network', 'true')
 
     def do_OPTIONS(self):
         self.send_response(204)
