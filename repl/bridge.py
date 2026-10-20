@@ -145,7 +145,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def answer(self, obj, code=200):
         # one line per request: when, what, the outcome, how long
-        outcome = obj.get('error', {}).get('message', '')[:60] if 'error' in obj else 'solved' if obj.get('completed') or obj.get('state', {}).get('solved') else 'ok'
+        bad = [(st['line'], d['message']['text']) for st in obj.get('steps', []) for d in st['diags'] if d.get('severity') == 1]
+        outcome = (obj['error'].get('message', '') if 'error' in obj
+                   else f"error in line {bad[0][0]}: {bad[0][1]}" if bad
+                   else 'solved' if obj.get('completed') or obj.get('state', {}).get('solved') else 'ok')
+        outcome = ' '.join(outcome.split())[:90]
         print(f"{time.strftime('%H:%M:%S')} {self.client_address[0]} {getattr(self, 'what', self.path)} → {outcome} ({(time.time() - getattr(self, 't0', time.time())) * 1000:.0f} ms)", flush=True)
         body = json.dumps(obj).encode()
         self.send_response(code)
