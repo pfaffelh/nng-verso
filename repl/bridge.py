@@ -11,6 +11,10 @@ POST /start {"context": "namespace MyNat", "statement": "example (x y : ℕ) (h 
             (or, for convenience, {"world": "Tutorial", "level": 2}: the level from nng4's game data)
                                                          → {"session", "state": {"id", "goals", "solved"}}
 POST /step  {"session", "state": 0, "tactic": "rw [h]"}  → {"state": …} or {"error": {"kind", "message"}}
+POST /simp  {"context", "open": "DiscreteMeasure", "vars": "(p : unitInterval)", "rules": "coin_not', …", "expr": "(coin p).map not"}
+                                                         → {"result": "coin (σ p)"}: the normal form of `expr`
+                                                           by `#simp only [rules]`, for a game that keeps its
+                                                           state normalised after each move
 POST /check {"session", "proof": "rw [h]\nrfl"}         → the proof state as lean4game's Game.getProofState
                                                            gives it (steps, diagnostics, completed), so that
                                                            nng-verso's client can show it as it is
@@ -127,6 +131,21 @@ class Session:
 
 repl = None
 sessions = {}
+forms = {}  # (context, vars, rules, expr) → the answer
+
+
+def normal_form(req):
+    """The normal form of an expression by `#simp only [rules]`, in a context (elaborated once)."""
+    key = (req.get('context', ''), req.get('vars', ''), req.get('rules', ''), req['expr'], req.get('open', ''))
+    if key not in forms:
+        env = repl.context(key[0])
+        cmd = (f"open {key[4]} in\n" if key[4] else '') + (f"variable {key[1]} in\n" if key[1] else '') + f"#simp only [{key[2]}] => {key[3]}"
+        r = repl.ask({'cmd': cmd, 'env': env})
+        errors = [m['data'] for m in r.get('messages', []) if m.get('severity') == 'error']
+        infos = [m['data'] for m in r.get('messages', []) if m.get('severity') == 'info']
+        forms[key] = {'error': {'kind': 'lean', 'message': '\n'.join(errors)}} if errors or not infos else {'result': infos[-1].strip()}
+    return forms[key]
+
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -147,6 +166,7 @@ class Handler(BaseHTTPRequestHandler):
         # one line per request: when, what, the outcome, how long
         bad = [(st['line'], d['message']['text']) for st in obj.get('steps', []) for d in st['diags'] if d.get('severity') == 1]
         outcome = (obj['error'].get('message', '') if 'error' in obj
+                   else f"= {obj['result']}" if 'result' in obj
                    else f"error in line {bad[0][0]}: {bad[0][1]}" if bad
                    else 'solved' if obj.get('completed') or obj.get('state', {}).get('solved') else 'ok')
         outcome = ' '.join(outcome.split())[:90]
@@ -163,13 +183,15 @@ class Handler(BaseHTTPRequestHandler):
         self.t0, self.what = time.time(), self.path
         try:
             req = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
-            self.what = f"{self.path} {req.get('statement', '')[:50] or (req.get('tactic') or (req.get('proof') or '').strip().replace(chr(10), '; '))[:60]}"
+            self.what = f"{self.path} {req.get('statement', '')[:50] or req.get('expr', '')[:70] or (req.get('tactic') or (req.get('proof') or '').strip().replace(chr(10), '; '))[:60]}"
 
             if self.path == '/start':
                 context, statement = (req.get('context', ''), req['statement']) if 'statement' in req else nng_level(req['world'], int(req['level']))
                 sid = uuid.uuid4().hex[:12]
                 sessions[sid] = Session(repl, context, statement)
                 return self.answer({'session': sid, 'state': sessions[sid].start})
+            if self.path == '/simp':
+                return self.answer(normal_form(req))
             s = sessions.get(req.get('session'))
             if not s:
                 return self.answer({'error': {'kind': 'session', 'message': 'unknown session'}}, 404)
